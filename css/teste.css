@@ -1,0 +1,50 @@
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+body { background: #1b130d; color: #fff; font-family: "Segoe UI", Roboto, Arial, sans-serif; }
+.escondido { display: none !important; }
+
+/* ---------- TV ---------- */
+#c2d, #gl, #gl canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: block; }
+#hud { position: fixed; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; }
+.topo { position: absolute; top: 2.5vh; left: 50%; transform: translateX(-50%); background: rgba(20, 14, 10, .82);
+  border: 2px solid #f0a040; border-radius: 10px; padding: 1vh 3vw; font-size: 3vh; letter-spacing: 1px; white-space: nowrap; }
+.topo b { color: #ffb347; margin-right: 1.5vw; }
+#fps { position: absolute; top: 2.5vh; right: 2vw; background: rgba(20, 14, 10, .82); border-radius: 8px; padding: .8vh 1.2vw; font-size: 3vh; font-weight: bold; }
+.painel { position: absolute; top: 12vh; left: 50%; transform: translateX(-50%); width: 64vw; background: rgba(20, 14, 10, .9);
+  border: 2px solid #5b4330; border-radius: 14px; padding: 2.5vh 2.5vw; font-size: 2.6vh; }
+.painel h2 { margin: 0 0 1.5vh; font-size: 3.4vh; color: #ffb347; }
+.painel table { width: 100%; border-collapse: collapse; }
+.painel td { padding: .8vh .6vw; border-bottom: 1px solid #3a2a1e; }
+.painel td.n { text-align: right; font-weight: bold; font-size: 3vh; }
+.selo { display: inline-block; min-width: 7vw; text-align: center; border-radius: 6px; padding: .3vh .6vw; font-size: 2.2vh; font-weight: bold; }
+.bom { background: #2e9d4f; } .ok { background: #c98a12; } .ruim { background: #b8352b; } .esp { background: #444; }
+.painel.mini { top: 10vh; left: 2vw; transform: none; width: 36vw; font-size: 1.7vh; padding: 1.2vh 1.2vw; }
+.painel.mini h2 { font-size: 2.2vh; margin-bottom: .5vh; } .painel.mini td.n { font-size: 1.9vh; } .painel.mini .selo { font-size: 1.5vh; min-width: 4vw; } .painel.mini .info { font-size: 1.4vh; }
+.info { color: #c9b8a6; font-size: 2.1vh; margin-top: 1.5vh; line-height: 1.5; word-break: break-all; }
+.qrbox { position: absolute; left: 2vw; bottom: 3vh; background: rgba(20, 14, 10, .9); border: 2px solid #f0a040; border-radius: 14px;
+  padding: 1.5vh; font-size: 2.2vh; width: 26vh; text-align: center; }
+.qrbox #qr { background: #fff; padding: 1vh; border-radius: 8px; margin-bottom: 1vh; }
+.qrbox #qr img, .qrbox #qr canvas { width: 100% !important; height: auto !important; display: block; }
+.ctl { position: absolute; right: 2vw; bottom: 3vh; background: rgba(20, 14, 10, .9); border: 2px solid #5b4330; border-radius: 14px;
+  padding: 1.5vh 2vw; font-size: 2.6vh; width: 42vw; line-height: 1.6; }
+.ctl b { color: #ffb347; }
+#erros { position: absolute; right: 2vw; top: 18vh; width: 30vw; color: #ffb4a8; font-size: 1.8vh; }
+#repetir { position: fixed; right: 2vw; top: 10vh; font-size: 2.6vh; padding: 1.2vh 2vw; border-radius: 10px; border: 3px solid #ffb347;
+  background: #3a2414; color: #fff; }
+#repetir:focus { background: #f0a040; color: #1b130d; }
+
+/* ---------- celular ---------- */
+body.cel { overflow: hidden; -webkit-user-select: none; user-select: none; touch-action: none; }
+.cel .tela { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; padding: 12px; box-sizing: border-box; }
+.cel h1 { margin: 0 0 6px; font-size: 20px; color: #ffb347; }
+.cel .med { background: #2a1d14; border-radius: 10px; padding: 8px 12px; font-size: 15px; line-height: 1.55; margin-bottom: 8px; }
+.cel .med b { color: #ffb347; font-size: 18px; }
+.cel .bts { display: flex; margin-bottom: 8px; }
+.cel .bts button { flex: 1; margin-right: 6px; font-size: 15px; padding: 10px; border-radius: 8px; border: 0; background: #5b4330; color: #fff; }
+.cel .bts button:last-child { margin-right: 0; }
+.cel .controles { flex: 1; position: relative; min-height: 200px; }
+#acel { position: absolute; left: 0; top: 0; width: 42%; height: 55%; border-radius: 18px; background: #b8352b; border: 0;
+  color: #fff; font-size: 22px; font-weight: bold; }
+#acel.on { background: #ff5a48; }
+#volante { position: absolute; right: 0; bottom: 0; width: 54%; height: 60%; border-radius: 18px; background: #2a1d14; border: 2px solid #5b4330; }
+#volante .pino { position: absolute; top: 50%; left: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; background: #ffb347; }
+#volante span { position: absolute; bottom: 6px; width: 100%; text-align: center; color: #9b8a78; font-size: 13px; }

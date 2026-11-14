@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Teste da TV</title>
+  <link rel="stylesheet" href="css/teste.css">
+</head>
+<body>
+  <canvas id="c2d" class="escondido"></canvas>
+  <div id="gl"></div>
+  <div id="hud">
+    <div class="topo"><b>TESTE DA TV</b><span id="etapa">Preparando…</span></div>
+    <div id="fps">-- fps</div>
+    <div id="painel" class="painel">
+      <h2>Desempenho</h2>
+      <table id="tabela"></table>
+      <div class="info" id="info"></div>
+    </div>
+    <div id="qrbox" class="qrbox escondido">
+      <div id="qr"></div>
+      Abra no celular:<br><b id="link"></b>
+    </div>
+    <div id="ctl" class="ctl escondido"></div>
+    <div id="erros"></div>
+  </div>
+  <button id="repetir" class="escondido">▶ Repetir teste</button>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="js/firebase.js"></script>
+  <script src="js/tv-teste.js"></script>
+</body>
+</html>
