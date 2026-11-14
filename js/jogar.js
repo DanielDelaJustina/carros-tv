@@ -1,5 +1,5 @@
 // TV: sala + estrada livre com os carros dirigidos pelos celulares.
-// Parâmetros: ?teclado=1 (um carro no teclado: setas, Shift = nitro, M = míssil, E = escudo, C = começar, R = voltar à estrada; F = tela cheia)  ?r=540|720|1080  ?q=0
+// Parâmetros: ?teclado=1 (um carro no teclado: setas, Shift = nitro, M = míssil, E = escudo, C/1 = incursão, 2 = corrida, 3 = comboio, R = voltar à estrada; F = tela cheia)  ?r=540|720|1080  ?q=0
 (function () {
   function $(id) { return document.getElementById(id); }
   function param(n, pad) { var m = new RegExp('[?&]' + n + '=([^&]*)').exec(location.search); return m ? decodeURIComponent(m[1]) : pad; }
@@ -167,6 +167,7 @@
   }
   function criarJogador(key, info) {
     var slot = slotLivre();
+    if (slot >= 0 && totalCelulares() >= MAX) slot = -1;
     if (slot < 0) { aviso('Sala cheia: ' + info.nome + ' não entrou'); if (rede) rede.publicarJogador(key, { cheia: Date.now() }); return null; }
     var tipo = info.carro === 'muscle' ? 'muscle' : 'buggy';
     var m = Carros.modelo(tipo, CORES[slot], slot + 1);
@@ -196,6 +197,7 @@
     Som.motor(j); Som.entrada();
     aviso(info.nome + ' entrou com o ' + NOMES_CARRO[tipo], CORES_CSS[slot]);
     if (rede && key !== 'teclado') rede.publicarJogador(key, { slot: slot, cor: CORES_CSS[slot], tv: SESSAO });
+    ligarArtilheiros();
     atualizarLobby();
     return j;
   }
@@ -211,7 +213,8 @@
     return { x: p.x, z: p.z, h: Math.atan2(e.tx[ii], e.tz[ii]) + (dir < 0 ? Math.PI : 0) };
   }
   function preencherCartao(j) {
-    j.ui.nome.textContent = j.info.nome; j.ui.tipo.textContent = NOMES_CARRO[j.m.tipo];
+    j.ui.nome.textContent = j.info.nome + (j.artilheiro ? ' & ' + j.artilheiro.info.nome : '');
+    j.ui.tipo.textContent = NOMES_CARRO[j.m.tipo] + (j.artilheiro ? ' · PILOTO & ARTILHEIRO' : '');
     j.etq.innerHTML = '';
     j.etq.appendChild(document.createTextNode(j.info.nome.toUpperCase()));
     j.etq.appendChild(document.createElement('i')); j.etq.appendChild(document.createElement('s'));
@@ -224,6 +227,7 @@
     if (j.etq.parentNode) j.etq.parentNode.removeChild(j.etq);
     if (j.cartao.parentNode) j.cartao.parentNode.removeChild(j.cartao);
     delete jogadores[key];
+    if (j.artilheiro) { j.artilheiro.carro = null; ligarArtilheiros(); }
     aviso(j.info.nome + ' saiu');
     atualizarLobby();
   }
@@ -235,13 +239,45 @@
     var n = criarJogador(key, info); if (n) n.ve.colocar(x, z, h);
   }
   function nitro(j) { if (j.ve.acionarNitro()) Som.nitro(); }
+
+  // ---------------- artilheiros: segundo celular que cuida das armas de um carro
+  var artilheiros = {};
+  function totalCelulares() { var n = 0, k; for (k in jogadores) n++; for (k in artilheiros) n++; return n; }
+  function criarArtilheiro(key, info) {
+    if (totalCelulares() >= MAX) { aviso('Sala cheia: ' + info.nome + ' não entrou'); if (rede) rede.publicarJogador(key, { cheia: Date.now() }); return; }
+    artilheiros[key] = { key: key, info: info, carro: null };
+    aviso(info.nome + ' entrou como artilheiro');
+    Som.entrada();
+    ligarArtilheiros();
+    atualizarLobby();
+  }
+  function ligarArtilheiros() {
+    for (var k in artilheiros) {
+      var a = artilheiros[k]; if (a.carro) continue;
+      for (var c in jogadores) {
+        var j = jogadores[c]; if (j.artilheiro) continue;
+        a.carro = j; j.artilheiro = a; j.arte = { giro: 0, atira: 0 };
+        aviso(a.info.nome + ' cuida das armas de ' + j.info.nome, CORES_CSS[j.slot]);
+        preencherCartao(j);
+        break;
+      }
+      if (rede) rede.publicarJogador(a.key, a.carro ? { espera: 0, cor: CORES_CSS[a.carro.slot], tv: SESSAO } : { espera: Date.now(), tv: SESSAO });
+    }
+  }
+  function removerArtilheiro(key) {
+    var a = artilheiros[key]; if (!a) return;
+    if (a.carro) { a.carro.artilheiro = null; a.carro.arte = null; preencherCartao(a.carro); }
+    delete artilheiros[key];
+    aviso(a.info.nome + ' saiu');
+    atualizarLobby();
+  }
   function voltarEstrada(j) {
     var ep = mundo.estradaPerto(j.ve.x, j.ve.z);
     var h = ep.h + (Math.cos(j.ve.h - ep.h) >= 0 ? 0 : Math.PI);
     j.ve.colocar(ep.x - Math.cos(h) * 3, ep.z + Math.sin(h) * 3, h);
   }
   function atualizarLobby() {
-    var n = 0; for (var k in jogadores) n++;
+    var n = totalCelulares();
     $('qtd').textContent = n + '/' + MAX + ' JOGADORES';
     $('lobby').classList.toggle('escondido', n > 0);
     $('mini').classList.toggle('escondido', n === 0 || n >= MAX);
@@ -258,19 +294,34 @@
   var rede = null;
   function iniciarRede() {
     rede = new Rede.TV(cod, {
-      entrou: function (key, info) { criarJogador(key, info); },
-      mudou: function (key, info) { trocarCarro(key, info); },
-      saiu: function (key) { removerJogador(key); },
+      entrou: function (key, info) { if (info.papel === 'artilheiro') criarArtilheiro(key, info); else criarJogador(key, info); },
+      mudou: function (key, info) {
+        var eraArt = !!artilheiros[key];
+        if (eraArt !== (info.papel === 'artilheiro')) { // trocou de papel
+          if (eraArt) removerArtilheiro(key); else removerJogador(key);
+          if (info.papel === 'artilheiro') criarArtilheiro(key, info); else criarJogador(key, info);
+        } else if (eraArt) { artilheiros[key].info = info; if (artilheiros[key].carro) preencherCartao(artilheiros[key].carro); }
+        else trocarCarro(key, info);
+      },
+      saiu: function (key) { if (artilheiros[key]) removerArtilheiro(key); else removerJogador(key); },
       ctrl: function (key, c) {
+        var a = artilheiros[key];
+        if (a) { // artilheiro: x gira a torre, a atira; botões de míssil, escudo e começar
+          if (a.carro) a.carro.arte = { giro: c[0], atira: c[1] };
+          contador(a, 'missilCont', c[5], function () { if (a.carro) Incursao.missil(a.carro); });
+          contador(a, 'escudoCont', c[6], function () { if (a.carro) Incursao.escudo(a.carro); });
+          contador(a, 'comecarCont', c[7], function () { Incursao.comecar(c[8] || 0); });
+          return;
+        }
         var j = jogadores[key]; if (!j) return;
         j.ent.x = c[0]; j.ent.a = c[1]; j.ent.r = c[2]; j.ultimoCtrl = Date.now();
         // c[3] = quantos toques no nitro o celular já deu (contador não se perde se um pacote sumir)
         contador(j, 'nitroCont', c[3], nitro);
         contador(j, 'missilCont', c[5], Incursao.missil);
         contador(j, 'escudoCont', c[6], Incursao.escudo);
-        contador(j, 'comecarCont', c[7], function () { Incursao.comecar(); });
+        contador(j, 'comecarCont', c[7], function () { Incursao.comecar(c[8] || 0); });
       },
-      reset: function (key) { var j = jogadores[key]; if (j) voltarEstrada(j); },
+      reset: function (key) { var j = jogadores[key] || (artilheiros[key] && artilheiros[key].carro); if (j) voltarEstrada(j); },
       canal: function (key, nome) { var j = jogadores[key]; if (j) { j.canal = nome; j.ui.sinal.className = 'sinal' + (nome === 'WebRTC' ? '' : ' fb'); } }
     });
   }
@@ -283,7 +334,8 @@
     if (TECLADO && e.keyCode === 16 && !e.repeat && jogadores.teclado) nitro(jogadores.teclado);
     if (TECLADO && e.keyCode === 77 && !e.repeat && jogadores.teclado) Incursao.missil(jogadores.teclado);
     if (TECLADO && e.keyCode === 69 && !e.repeat && jogadores.teclado) Incursao.escudo(jogadores.teclado);
-    if (TECLADO && e.keyCode === 67 && !e.repeat) Incursao.comecar();
+    if (TECLADO && e.keyCode === 67 && !e.repeat) Incursao.comecar(0);
+    if (TECLADO && e.keyCode >= 49 && e.keyCode <= 51 && !e.repeat) Incursao.comecar(e.keyCode - 49);
     if (e.keyCode === 70 && !e.repeat) telaCheia();
     if (TECLADO && [37, 38, 39, 40, 32].indexOf(e.keyCode) >= 0) e.preventDefault();
   });
@@ -372,6 +424,10 @@
 
   // ---------------- placar, mensagens, minimapa e resultado
   function placar() {
+    var el = $('placar'), txt = Incursao.textoPlacar();
+    if (el.getAttribute('data-t') !== txt) { el.innerHTML = txt; el.setAttribute('data-t', txt); }
+  }
+  function placarAntigo() {
     var E = Incursao.estado, el = $('placar'), txt;
     if (E.fase === 'livre') txt = 'ESTRADA LIVRE · toque <b>▶ COMEÇAR</b> no celular';
     else if (E.fase === 'contagem') txt = 'PREPAREM-SE!';
@@ -397,6 +453,8 @@
     g.strokeStyle = '#d9c3a0'; g.lineWidth = 4; g.beginPath();
     for (var i = 0; i <= e.n; i += 3) { var q = i % e.n; if (!i) g.moveTo(mx(e.px[q]), mx(e.pz[q])); else g.lineTo(mx(e.px[q]), mx(e.pz[q])); }
     g.closePath(); g.stroke();
+    var at = mundo.atalhos; g.strokeStyle = '#b08a5a'; g.lineWidth = 2.5;
+    for (var a = 0; a < at.qtd; a++) { g.beginPath(); for (var s = 0; s < at.n; s += 4) { var q2 = a * at.n + s; if (!s) g.moveTo(mx(at.px[q2]), mx(at.pz[q2])); else g.lineTo(mx(at.px[q2]), mx(at.pz[q2])); } g.stroke(); }
   }
   function desenharMapa() {
     if (!mapaG) return;
@@ -404,6 +462,9 @@
     g.clearRect(0, 0, MT, MT);
     g.save(); g.beginPath(); g.arc(MT / 2, MT / 2, MT / 2 - 2, 0, 6.29); g.clip();
     g.drawImage(mapaFundo, 0, 0);
+    var cam2 = Incursao.caminhao(), dst = Incursao.destino();
+    if (dst) { g.fillStyle = '#46d17a'; g.beginPath(); g.arc(mx(dst.x), mx(dst.z), 7, 0, 6.29); g.fill(); }
+    if (cam2 && !cam2.morto) { g.fillStyle = '#fff'; g.fillRect(mx(cam2.ve.x) - 5, mx(cam2.ve.z) - 5, 10, 10); }
     g.fillStyle = '#ff3a2a';
     for (i = 0; i < bots.length; i++) if (!bots[i].morto) { g.beginPath(); g.arc(mx(bots[i].ve.x), mx(bots[i].ve.z), bots[i].chefe ? 7 : 4.5, 0, 6.29); g.fill(); }
     for (var k in jogadores) {
@@ -418,10 +479,18 @@
   }
   function mostrarFim(res) {
     var el = $('resultado');
-    if (!res) { el.classList.add('escondido'); for (var k in jogadores) if (rede && k !== 'teclado') rede.enviar(k, { fim: 0 }); return; }
+    if (!res) { el.classList.add('escondido'); for (var k in jogadores) if (rede && k !== 'teclado') rede.enviar(k, { fim: 0 }); for (k in artilheiros) if (rede) rede.enviar(k, { fim: 0 }); return; }
     var min = Math.floor(res.tempo / 60), seg = res.tempo % 60;
+    if (res.modo === 'corrida') {
+      var hc = '<h2 class="titulo">' + (res.chegada[0] ? res.chegada[0].nome.toUpperCase() + ' VENCEU!' : 'FIM DA CORRIDA') + '</h2><table><tr><th>POS.</th><th></th><th>TEMPO</th></tr>';
+      for (var q = 0; q < res.chegada.length; q++) { var c = res.chegada[q]; hc += '<tr><td>' + c.pos + 'º</td><td style="color:' + c.cor + '">' + c.nome + '</td><td>' + (c.tempo ? Math.floor(c.tempo / 60) + ':' + ('0' + c.tempo % 60).slice(-2) : '—') + '</td></tr>'; }
+      el.innerHTML = hc + '</table><div class="resumo">Nova rodada liberada em alguns segundos…</div>'; el.classList.remove('escondido');
+      for (var k2 in jogadores) if (rede && k2 !== 'teclado') rede.enviar(k2, { fim: res });
+      for (k2 in artilheiros) if (rede) rede.enviar(k2, { fim: res });
+      return;
+    }
     var h = '<h2 class="titulo">' + (res.vitoria ? 'VITÓRIA!' : 'DERROTA') + '</h2>' +
-      '<div class="resumo">' + (res.vitoria ? 'As 5 ondas foram vencidas' : 'Chegaram até a onda ' + res.onda) + ' · ' + res.abates + ' bots destruídos · ' + min + ' min ' + seg + ' s</div>' +
+      '<div class="resumo">' + (res.modo === 'comboio' ? (res.vitoria ? 'O caminhão chegou com ' + res.caminhao + '% de vida' : 'O comboio caiu') : res.vitoria ? 'As 5 ondas foram vencidas' : 'Chegaram até a onda ' + res.onda) + ' · ' + res.abates + ' bots destruídos · ' + min + ' min ' + seg + ' s</div>' +
       '<table><tr><th></th><th>DESTRUIU</th><th>DANO</th><th>MORREU</th></tr>';
     for (var i = 0; i < res.placar.length; i++) {
       var p = res.placar[i];
@@ -430,6 +499,7 @@
     h += '</table><div class="resumo">Nova rodada liberada em alguns segundos…</div>';
     el.innerHTML = h; el.classList.remove('escondido');
     for (k in jogadores) if (rede && k !== 'teclado') rede.enviar(k, { fim: res });
+    for (k in artilheiros) if (rede) rede.enviar(k, { fim: res });
   }
 
   // ---------------- laço principal
@@ -471,11 +541,14 @@
         var h = Incursao.hud(j);
         j.ui.vida.style.width = h.hp + '%';
         j.ui.vida.parentNode.className = 'barra vida' + (h.hp < 35 ? ' baixa' : '');
-        j.ui.itens.textContent = 'MÍSSEIS ' + h.m + ' · ESCUDO ' + (h.e === 'pronto' ? 'OK' : h.e === 'ativo' ? 'ATIVO' : h.e + 's');
-        if (rede && k !== 'teclado' && Math.floor(t * 4) !== j.ultimoEnvio) {
+        j.ui.itens.textContent = 'MÍSSIL ' + h.m + ' · ESCUDO ' + (h.e === 'pronto' ? 'OK' : h.e === 'ativo' ? 'ATIVO' : h.e + 's');
+        var tipoTxt = NOMES_CARRO[j.m.tipo] + (h.pos ? ' · ' + h.pos + 'º LUGAR · VOLTA ' + h.volta + '/3' : j.artilheiro ? ' · PILOTO & ARTILHEIRO' : '');
+        if (j.ui.tipo.textContent !== tipoTxt) j.ui.tipo.textContent = tipoTxt;
+        if (rede && Math.floor(t * 4) !== j.ultimoEnvio) {
           j.ultimoEnvio = Math.floor(t * 4);
           h.v = kmh; h.c = Math.round(j.ve.cargas * 100) / 100; h.b = j.ve.usandoNitro ? 1 : 0;
-          rede.enviar(k, { hud: h });
+          if (k !== 'teclado') rede.enviar(k, { hud: h });
+          if (j.artilheiro) rede.enviar(j.artilheiro.key, { hud: h });
         }
       }
     }

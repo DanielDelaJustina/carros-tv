@@ -174,12 +174,45 @@
       return mi < 0 ? 260 : Math.sqrt(melhor);
     }
 
+    // ------------------------------------------------ atalhos de terra (cortam o miolo do circuito)
+    var ATALHOS = [[0.12, 0.36, 1], [0.44, 0.66, -1], [0.72, 0.97, 1]], AM = 110;
+    var apx = [], apz = [], aph = [], adx = [], adz = [], aBaldes = {};
+    for (k = 0; k < ATALHOS.length; k++) {
+      var i0 = Math.floor(ATALHOS[k][0] * N), i1 = Math.floor(ATALHOS[k][1] * N);
+      var ax0 = px[i0], az0 = pz[i0], ax1 = px[i1], az1 = pz[i1];
+      var cdx = ax1 - ax0, cdz = az1 - az0, cl = Math.sqrt(cdx * cdx + cdz * cdz), pxp = -cdz / cl, pzp = cdx / cl;
+      for (var s = 0; s < AM; s++) {
+        var tt = s / (AM - 1), curva2 = Math.sin(tt * Math.PI) * 28 * ATALHOS[k][2] + Math.sin(tt * Math.PI * 3) * 7;
+        apx.push(ax0 + cdx * tt + pxp * curva2); apz.push(az0 + cdz * tt + pzp * curva2);
+        aph.push(mix(ph[i0], ph[i1], tt) + 0.4);
+      }
+    }
+    for (i = 0; i < apx.length; i++) {
+      var ii2 = Math.min(i + 1, apx.length - 1), ii1 = Math.max(i - 1, 0);
+      if (Math.floor(ii2 / AM) !== Math.floor(i / AM)) ii2 = i;
+      if (Math.floor(ii1 / AM) !== Math.floor(i / AM)) ii1 = i;
+      var ddx = apx[ii2] - apx[ii1], ddz = apz[ii2] - apz[ii1], dl = Math.sqrt(ddx * ddx + ddz * ddz) || 1;
+      adx.push(ddx / dl); adz.push(ddz / dl);
+      var cha = chave(Math.floor(apx[i] / CEL), Math.floor(apz[i] / CEL));
+      (aBaldes[cha] = aBaldes[cha] || []).push(i);
+    }
+    function pertoAtalho(x, z) {
+      var cx = Math.floor(x / CEL), cz = Math.floor(z / CEL), melhor = 1e12, mi = -1;
+      for (var ddx2 = -2; ddx2 <= 2; ddx2++) for (var ddz2 = -2; ddz2 <= 2; ddz2++) {
+        var lista = aBaldes[chave(cx + ddx2, cz + ddz2)]; if (!lista) continue;
+        for (var q = 0; q < lista.length; q++) { var j = lista[q], ex = apx[j] - x, ez = apz[j] - z, d2 = ex * ex + ez * ez; if (d2 < melhor) { melhor = d2; mi = j; } }
+      }
+      return mi < 0 ? { d: 999, h: 0, i: -1 } : { d: Math.sqrt(melhor), h: aph[mi], i: mi };
+    }
+
     // ------------------------------------------------ terreno (grade de alturas)
     var TAM = 900, G = Q ? 144 : 108, NV = G + 1, CT = TAM / G;
     var H = new Float32Array(NV * NV), D = new Float32Array(NV * NV), M = new Float32Array(NV * NV);
     for (var gj = 0; gj < NV; gj++) for (var gi = 0; gi < NV; gi++) {
       var x = -TAM / 2 + gi * CT, z = -TAM / 2 + gj * CT;
       var d = perto(x, z), hr = pertoIdx >= 0 ? ph[pertoIdx] : 0;
+      var dAt = pertoAtalho(x, z);
+      if (dAt.d * 1.25 < d) { d = dAt.d * 1.25; hr = dAt.h; }
       var duna = fbm(x * 0.018, z * 0.018, 3) * 5 + fbm(x * 0.07, z * 0.07, 2) * 1.1;
       var chao = mix(hr - 0.45, hr + duna, suave(8, 32, d));
       var borda = d + fbm(x * 0.008 + 5, z * 0.008, 3) * 30;
@@ -190,7 +223,16 @@
       H[gj * NV + gi] = chao + terraco(alto, 7.5);
       D[gj * NV + gi] = d; M[gj * NV + gi] = m;
     }
+    var rampas = []; // {x, z, dx, dz, L, W, H, base}
     function altura(x, z) {
+      var h = alturaChao(x, z);
+      for (var q = 0; q < rampas.length; q++) {
+        var r = rampas[q], ox = x - r.x, oz = z - r.z, u = ox * r.dx + oz * r.dz, w = -ox * r.dz + oz * r.dx;
+        if (u >= 0 && u <= r.L && w >= -r.W / 2 && w <= r.W / 2) h = Math.max(h, r.base + r.H * u / r.L);
+      }
+      return h;
+    }
+    function alturaChao(x, z) {
       var fx = (x + TAM / 2) / CT, fz = (z + TAM / 2) / CT;
       var ix = Math.floor(fx), iz = Math.floor(fz);
       if (ix < 0) { ix = 0; fx = 0; } if (iz < 0) { iz = 0; fz = 0; }
@@ -405,7 +447,7 @@
     while (nMesas < 10 && tent < 200) {
       tent++;
       var pm = aoLado(Math.floor(R() * N), R() < 0.5 ? 1 : -1, 28 + R() * 18);
-      if (perto(pm.x, pm.z) < 24) continue;
+      if (perto(pm.x, pm.z) < 24 || pertoAtalho(pm.x, pm.z).d < 22) continue;
       var raio = 5 + R() * 6, alt = 14 + R() * 22;
       var gm = new T.CylinderGeometry(raio * 0.8, raio * 1.2, alt, 9, 6);
       var pa = gm.attributes.position;
@@ -477,6 +519,7 @@
     for (k = 0; k < lugaresTorre.length; k++) {
       var pt = aoLado(Math.floor(N * lugaresTorre[k][0]), lugaresTorre[k][1], lugaresTorre[k][2]);
       var caida = k === 1;
+      if (pertoAtalho(pt.x, pt.z).d < 12) continue;
       if (k !== 1) colide(pt.x, pt.z, 3.6);
       torre(new Mont(pt.x, pt.y + (caida ? 2.5 : 0), pt.z, R() * 3, 0, caida ? 1.35 : 0), 22, [0.32, 0.25, 0.21]);
       if (!caida) new Mont(pt.x, pt.y, pt.z, 0).caixa(5, 1.2, 5, 0, 0.3, 0, [0.5, 0.45, 0.4]);
@@ -486,6 +529,7 @@
     for (k = 0; k < 9; k++) {
       var pw = aoLado(Math.floor(R() * N), R() < 0.5 ? 1 : -1, 11 + R() * 12);
       var vira = R() < 0.25;
+      if (pertoAtalho(pw.x, pw.z).d < 7) continue;
       var wm = new Mont(pw.x, pw.y + (vira ? 1.5 : 0.5), pw.z, R() * 6, (R() - 0.5) * 0.2, vira ? Math.PI : (R() - 0.5) * 0.3);
       var cb = R() < 0.5 ? [0.2, 0.17, 0.15] : [0.42, 0.25, 0.16];
       wm.caixa(2.1, 0.8, 4.3, 0, 0.4, 0, cb);
@@ -504,6 +548,7 @@
     for (i = 0; i < N; i += 32) {
       var pp = aoLado(i, -1, 13);
       var quebrado = (i / 32) % 7 === 5;
+      if (pertoAtalho(pp.x, pp.z).d < 6) { anterior = null; continue; }
       colide(pp.x, pp.z, 0.5);
       var pm2 = new Mont(pp.x, pp.y, pp.z, pp.rot, quebrado ? 0.5 : 0, 0);
       pm2.caixa(0.35, 10, 0.35, 0, 5, 0, [0.36, 0.27, 0.2]);
@@ -526,6 +571,30 @@
     gf.setAttribute('position', new T.BufferAttribute(new Float32Array(fios), 3));
     cena.add(new T.LineSegments(gf, new T.LineBasicMaterial({ color: 0x2a2220 })));
 
+    function rampa(x, z, dx, dz, L, W, H) {
+      var base = alturaChao(x, z);
+      // começa rente ao chão (sem degrau na entrada); na estrada fica um pouco abaixo do asfalto no começo
+      rampas.push({ x: x, z: z, dx: dx, dz: dz, L: L, W: W, H: H, base: base });
+      var g = new T.BufferGeometry(), hw = W / 2;
+      // prisma: rampa (topo inclinado), lados triangulares e a face de trás
+      var p = [-hw, 0, 0, hw, 0, 0, hw, H, L, -hw, 0, 0, hw, H, L, -hw, H, L,
+        -hw, 0, 0, -hw, H, L, -hw, 0, L, hw, 0, 0, hw, 0, L, hw, H, L,
+        -hw, 0, L, -hw, H, L, hw, H, L, -hw, 0, L, hw, H, L, hw, 0, L];
+      g.setAttribute('position', new T.BufferAttribute(new Float32Array(p), 3));
+      var mr = new Mont(x, base, z, Math.atan2(dx, dz));
+      mr.add(g, 0, 0, 0, 0, 0, 0, 1, 1, 1, function (xx, yy, zz) { var f = (Math.floor((yy - base) * 3) % 2) ? 0.92 : 1; return [0.62 * f, 0.45 * f, 0.3 * f]; });
+      for (var s2 = -1; s2 <= 1; s2 += 2) mr.viga(s2 * (hw - 0.2), 0.05, 0, s2 * (hw - 0.2), H + 0.05, L, 0.18, [0.55, 0.52, 0.5]);
+      mr.caixa(W, 0.3, 0.3, 0, H - 0.1, L, [0.85, 0.7, 0.2]); // faixa amarela na ponta
+    }
+    var rE = [[0.17, 3.5], [0.52, -3.5]];
+    for (k = 0; k < rE.length; k++) {
+      var ri = Math.floor(rE[k][0] * N), rpx = px[ri] - tz[ri] * rE[k][1], rpz = pz[ri] + tx[ri] * rE[k][1];
+      rampa(rpx, rpz, tx[ri], tz[ri], 9, 5, 2.3);
+    }
+    for (k = 0; k < ATALHOS.length; k++) {
+      var ai = k * AM + Math.floor(AM * 0.5);
+      rampa(apx[ai], apz[ai], adx[ai], adz[ai], 10, 6, 2.8);
+    }
     cena.add(juntar(partes));
 
     // ------------------------------------------------ pedras, moitas e capim (instanciados)
@@ -561,7 +630,7 @@
     function lugarVale(dMin, dMax) {
       for (var t = 0; t < 30; t++) {
         var pv = aoLado(Math.floor(R() * N), R() < 0.5 ? 1 : -1, dMin + Math.pow(R(), 1.4) * (dMax - dMin));
-        if (perto(pv.x, pv.z) > 10.5) return pv;
+        if (perto(pv.x, pv.z) > 10.5 && pertoAtalho(pv.x, pv.z).d > 7) return pv;
       }
       return pv;
     }
@@ -684,6 +753,9 @@
       // ponto da estrada mais perto: {i, d, x, z, y, h}
       estradaPerto: function (x, z) { var d = perto(x, z), i = pertoIdx < 0 ? 0 : pertoIdx; return { i: i, d: d, x: px[i], z: pz[i], y: ph[i] + 0.3, h: Math.atan2(tx[i], tz[i]) }; },
       aoLado: aoLado,
+      atalhos: { px: apx, pz: apz, n: AM, qtd: ATALHOS.length },
+      rampas: rampas,
+      pertoAtalho: pertoAtalho,
       estrada: { n: N, px: px, pz: pz, ph: ph, tx: tx, tz: tz, total: total, largura: LARG * 2 },
       sol: SOL,
       atualizar: atualizar,

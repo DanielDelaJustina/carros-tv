@@ -418,7 +418,7 @@
     for (var kk in pb) this.p[kk] = pb[kk];
     this.x = 0; this.z = 0; this.y = 0; this.h = 0;
     this.v = 0; this.vl = 0; this.dir = 0; this.nitro = 1; this.usandoNitro = false;
-    this.cargas = NITRO_MAX; this.tempoNitro = 0;
+    this.cargas = NITRO_MAX; this.tempoNitro = 0; this.noAr = false; this.vy = 0; this.vySubida = 0;
     this.pitch = 0; this.roll = 0; this.giroRoda = 0; this.batida = 0; this.derrapando = 0;
   }
   var NITRO_MAX = 3, NITRO_SEG = 3, NITRO_RECARGA = 9; // 3 cargas, 3 s cada, 1 carga volta a cada 9 s
@@ -429,7 +429,7 @@
     return true;
   };
   Veiculo.prototype.colocar = function (x, z, h) {
-    this.x = x; this.z = z; this.h = h; this.v = 0; this.vl = 0;
+    this.x = x; this.z = z; this.h = h; this.v = 0; this.vl = 0; this.noAr = false; this.vy = 0;
     this.y = this.mundo.altura(x, z);
   };
   // entrada: {x: -1..1 (direção), a: 0/1 acelera, r: 0/1 freio/ré, n: 0/1 nitro}
@@ -447,7 +447,7 @@
     var vmax = p.vmax * sup * (this.usandoNitro ? 1.45 : 1);
 
     // aceleração, freio e ré
-    if ((e.a || this.usandoNitro) && !e.r) {
+    if ((e.a || this.usandoNitro) && !e.r && !this.noAr) {
       var ac = p.acel * (this.usandoNitro ? 1.9 : 1);
       if (this.v < vmax) this.v += ac * dt * Math.max(0.15, 1 - this.v / vmax);
       else this.v += (vmax - this.v) * dt * 1.5;
@@ -462,7 +462,7 @@
     // direção
     this.dir += (e.x - this.dir) * Math.min(1, dt * 9);
     var vel = Math.abs(this.v);
-    var taxa = this.dir * p.giro * Math.min(1, vel / 9) * (1 - 0.35 * Math.min(1, vel / p.vmax)) * (this.v < 0 ? -1 : 1);
+    var taxa = (this.noAr ? 0.25 : 1) * this.dir * p.giro * Math.min(1, vel / 9) * (1 - 0.35 * Math.min(1, vel / p.vmax)) * (this.v < 0 ? -1 : 1);
     this.h -= taxa * dt;
 
     // derrapagem: velocidade lateral nasce na curva e some pela aderência
@@ -477,7 +477,7 @@
     // paredes do cânion: subida muito íngreme bloqueia
     var hAtual = mundo.altura(this.x, this.z), hNovo = mundo.altura(nx, nz);
     var passo = Math.sqrt((nx - this.x) * (nx - this.x) + (nz - this.z) * (nz - this.z)) || 0.001;
-    if ((hNovo - hAtual) / passo > 0.7 || hNovo - this.y > 2) {
+    if (!(this.noAr && this.y > hNovo + 0.4) && ((hNovo - hAtual) / passo > 0.7 || hNovo - this.y > 2)) {
       batida = Math.abs(this.v);
       nx = this.x; nz = this.z;
       this.v *= -0.25; this.vl *= 0.3;
@@ -523,9 +523,23 @@
     var hf = mundo.altura(this.x + fx * 1.6, this.z + fz * 1.6), hb = mundo.altura(this.x - fx * 1.6, this.z - fz * 1.6);
     var hr = mundo.altura(this.x + rx * 1.1, this.z + rz * 1.1), hl = mundo.altura(this.x - rx * 1.1, this.z - rz * 1.1);
     if (naEstrada && ep.d < 7) { var ye = ep.y; hf = Math.max(hf, ye); hb = Math.max(hb, ye); hr = Math.max(hr, ye); hl = Math.max(hl, ye); }
-    var yAlvo = (hf + hb + hr + hl) / 4;
-    if (yAlvo > this.y) this.y += (yAlvo - this.y) * Math.min(1, dt * 18); else this.y += (yAlvo - this.y) * Math.min(1, dt * 7);
-    this.pitch += (Math.atan2(hb - hf, 3.2) - this.pitch) * Math.min(1, dt * 10);
+    var yAlvo = (hf + hb + hr + hl) / 4, yAntes = this.y;
+    // saltos: sai do chão quando o chão some embaixo subindo rápido (rampa, crista de duna)
+    if (this.noAr) {
+      this.vy -= 30 * dt; this.y += this.vy * dt;
+      if (this.y <= yAlvo) {
+        if (this.vy < -9) batida = Math.max(batida, -this.vy * 0.5);
+        this.y = yAlvo; this.noAr = false; this.vy = 0;
+      }
+    } else {
+      if (yAlvo > this.y) this.y += (yAlvo - this.y) * Math.min(1, dt * 18);
+      else if (this.y - yAlvo > 0.25 && this.vyMem > 3) { this.noAr = true; this.vy = this.vyMem * 1.15; }
+      else this.y += (yAlvo - this.y) * Math.min(1, dt * 9);
+      this.vySubida = (this.y - yAntes) / Math.max(dt, 0.001);
+      this.vyMem = Math.max(this.vySubida, (this.vyMem || 0) - 25 * dt); // lembra que estava subindo (rampa)
+    }
+    var pitchAlvo = this.noAr ? -Math.atan2(this.vy, Math.max(8, Math.abs(this.v))) * 0.6 : Math.atan2(hb - hf, 3.2);
+    this.pitch += (pitchAlvo - this.pitch) * Math.min(1, dt * (this.noAr ? 3 : 10));
     this.roll += (Math.atan2(hl - hr, 2.2) - this.roll) * Math.min(1, dt * 10);
     this.naEstrada = naEstrada && ep.d < 7; this.yEstrada = ep.y;
     this.batida = batida;

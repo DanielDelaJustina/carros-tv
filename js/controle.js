@@ -14,13 +14,22 @@
   if (!key) { key = 'k' + Math.random().toString(36).slice(2, 10); try { localStorage.setItem('carros_key' + sufixo, key); } catch (e) {} }
   var nomeSalvo = ''; try { nomeSalvo = localStorage.getItem('carros_nome' + sufixo) || ''; } catch (e) {}
   $('nome').value = nomeSalvo;
-  var carro = 'buggy';
+  var carro = 'buggy', papel = 'piloto';
+  try { papel = localStorage.getItem('carros_papel' + sufixo) || 'piloto'; } catch (e) {}
   try { carro = localStorage.getItem('carros_carro' + sufixo) || 'buggy'; } catch (e) {}
 
   var opcoes = document.querySelectorAll('.opcao');
   function marcar() { for (var i = 0; i < opcoes.length; i++) opcoes[i].classList.toggle('sel', opcoes[i].getAttribute('data-carro') === carro); }
   for (var i = 0; i < opcoes.length; i++) opcoes[i].onclick = function () { carro = this.getAttribute('data-carro'); marcar(); };
   marcar();
+  var papeis = document.querySelectorAll('.papel');
+  function marcarPapel() {
+    for (var i = 0; i < papeis.length; i++) papeis[i].classList.toggle('sel', papeis[i].getAttribute('data-papel') === papel);
+    $('escolhaCarro').style.display = papel === 'artilheiro' ? 'none' : '';
+    $('dicaArt').style.display = papel === 'artilheiro' ? '' : 'none';
+  }
+  for (i = 0; i < papeis.length; i++) papeis[i].onclick = function () { papel = this.getAttribute('data-papel'); marcarPapel(); };
+  marcarPapel();
 
   // ---------------- rede
   var lat = '', ultimoTv = null, canalTxt = 'conectando…';
@@ -29,6 +38,7 @@
     estado: function (t) { canalTxt = t === 'conectado' ? '● direto' : t; mostrarEstado(); },
     info: function (d) {
       if (d.cor) { $('barraTopo').style.borderBottomColor = d.cor; $('eu').style.color = d.cor; }
+      if (papel === 'artilheiro' && entrou) { var av0 = $('avisoCel'); if (d.espera) { av0.textContent = 'Esperando um piloto entrar…'; av0.className = 'avisoCel'; } else if (!fimAberto && d.espera === 0) av0.className = 'avisoCel escondido'; }
       if (d.cheia && entrou && d.cheia !== ultimaCheia) { ultimaCheia = d.cheia; sair('A sala está cheia (máximo 2). Tente de novo quando alguém sair.'); return; }
       if (d.tv && d.tv !== ultimoTv) { var antes = ultimoTv; ultimoTv = d.tv; if (antes && entrou) rede.conectar(); }
     },
@@ -38,6 +48,16 @@
       if (m.hud) {
         var h = m.hud;
         $('kmh').textContent = h.v;
+        document.body.classList.toggle('comArtilheiro', papel === 'piloto' && !!h.g);
+        var inf = '';
+        if (h.pos) inf = h.pos + 'º de ' + h.total + ' · volta ' + h.volta + '/3';
+        else if (h.cam !== undefined) inf = 'caminhão ' + h.cam + '%';
+        else if (h.f === 'jogando') inf = 'onda ' + h.o + '/5';
+        $('infoJogo').textContent = inf;
+        if (papel === 'artilheiro') {
+          $('nitroBar').style.width = h.calor + '%'; $('nitroBar').className = 'calor';
+          $('btAcel').firstChild.nodeValue = h.quente ? 'ESFRIANDO…' : '💥 ATIRAR';
+        }
         $('vidaBar').style.width = (h.hp || 0) + '%';
         $('vidaBar').className = h.hp < 35 ? 'baixa' : '';
         $('missilQtd').textContent = h.m + ' de 3';
@@ -50,7 +70,7 @@
         else if (h.morto) { av.textContent = 'DESTRUÍDO! Voltando em ' + h.morto + '…'; av.className = 'avisoCel'; }
         else if (!fimAberto) av.className = 'avisoCel escondido';
         var cg = m.hud.c || 0;
-        $('nitroBar').style.width = Math.round(cg / 3 * 100) + '%';
+        if (papel !== 'artilheiro') $('nitroBar').style.width = Math.round(cg / 3 * 100) + '%';
         var bt = $('btNitro');
         bt.className = 'bt' + (m.hud.b ? ' on' : cg < 1 ? ' vazio' : '');
         $('nitroQtd').textContent = m.hud.b ? 'ATIVO!' : (Math.floor(cg) + ' de 3');
@@ -64,7 +84,13 @@
     var av = $('avisoCel');
     if (!res) { fimAberto = false; av.className = 'avisoCel escondido'; return; }
     fimAberto = true;
-    var h = '<b>' + (res.vitoria ? 'VITÓRIA!' : 'DERROTA') + '</b><br>' + res.abates + ' bots destruídos';
+    var h;
+    if (res.modo === 'corrida') {
+      h = '<b>FIM DA CORRIDA</b>';
+      for (var q = 0; q < res.chegada.length; q++) h += '<br>' + res.chegada[q].pos + 'º <span style="color:' + res.chegada[q].cor + '">' + res.chegada[q].nome + '</span>';
+      av.innerHTML = h; av.className = 'avisoCel fim'; return;
+    }
+    h = '<b>' + (res.vitoria ? 'VITÓRIA!' : 'DERROTA') + '</b><br>' + res.abates + ' bots destruídos';
     for (var i = 0; i < res.placar.length; i++) { var p = res.placar[i]; h += '<br><span style="color:' + p.cor + '">' + p.nome + '</span>: ' + p.abates + ' destruídos, ' + p.mortes + ' mortes'; }
     av.innerHTML = h; av.className = 'avisoCel fim';
   }
@@ -88,14 +114,17 @@
   }
   $('btEntrar').onclick = function () {
     var nome = $('nome').value.trim().slice(0, 12) || 'Piloto';
-    try { localStorage.setItem('carros_nome' + sufixo, nome); localStorage.setItem('carros_carro' + sufixo, carro); } catch (e) {}
+    try { localStorage.setItem('carros_nome' + sufixo, nome); localStorage.setItem('carros_carro' + sufixo, carro); localStorage.setItem('carros_papel' + sufixo, papel); } catch (e) {}
+    document.body.classList.toggle('artilheiro', papel === 'artilheiro');
+    $('btAcel').firstChild.nodeValue = papel === 'artilheiro' ? '💥 ATIRAR' : 'ACELERA';
+    $('dicaDir').textContent = papel === 'artilheiro' ? 'arraste para girar a torre' : 'arraste para os lados';
     telaCheia();
     $('eu').textContent = nome;
     $('telaEntrar').style.display = 'none';
     $('telaJogo').classList.add('ativo');
     entrou = true;
     $('salaCod').textContent = cod;
-    rede.entrar(nome, carro);
+    rede.entrar(nome, carro, papel);
   };
   $('btTrocar').onclick = function () {
     $('telaJogo').classList.remove('ativo');
@@ -108,7 +137,7 @@
   window.addEventListener('pagehide', function () { /* mantém o jogador; sai só pelo botão da TV ou ao fechar a sala */ });
 
   // ---------------- controles
-  var ctrl = { x: 0, a: 0, r: 0, n: 0, m: 0, e: 0, s: 0 }, mudou = true;
+  var ctrl = { x: 0, a: 0, r: 0, n: 0, m: 0, e: 0, s: 0, modo: 0 }, mudou = true;
   function botao(id, campo) {
     var el = $(id);
     function liga(v) { if (ctrl[campo] !== v) { ctrl[campo] = v; mudou = true; enviar(true); } el.classList.toggle('on', !!v); }
@@ -128,7 +157,12 @@
     $(id).addEventListener('mousedown', function () { tocar(campo); });
   }
   botaoToque('btNitro', 'n'); botaoToque('btMissil', 'm'); botaoToque('btEscudo', 'e');
-  $('btComecar').onclick = function () { tocar('s'); };
+  $('btComecar').onclick = function () { $('menuModo').className = 'menuModo'; };
+  var modos = document.querySelectorAll('.modo');
+  for (var mi = 0; mi < modos.length; mi++) modos[mi].onclick = function () {
+    ctrl.modo = parseInt(this.getAttribute('data-modo'), 10); tocar('s'); $('menuModo').className = 'menuModo escondido';
+  };
+  $('btFecharModo').onclick = function () { $('menuModo').className = 'menuModo escondido'; };
 
   // direção flutuante: onde o dedo encosta vira o centro
   var dir = $('direcao'), pino = $('dPino'), base = $('dBase'), toqueId = null, cx = 0, cy = 0, ALC = 75;
@@ -170,7 +204,7 @@
     if (!entrou) return;
     var agora = Date.now(), vivo = rede.aberto() ? 150 : 1000;
     if (!mudou && !forcar && agora - ultimoEnvio < vivo) return;
-    rede.controle([ctrl.x, ctrl.a, ctrl.r, ctrl.n, ctrl.m, ctrl.e, ctrl.s], forcar);
+    rede.controle([ctrl.x, ctrl.a, ctrl.r, ctrl.n, ctrl.m, ctrl.e, ctrl.s, ctrl.modo], forcar);
     mudou = false; ultimoEnvio = agora;
   }
   setInterval(function () { enviar(false); }, 33);

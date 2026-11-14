@@ -41,10 +41,10 @@
       var j = this.jog[key];
       if (!j) {
         j = this.jog[key] = { key: key, quer: null, ultimoPing: null, canal: 'Firebase', seq: 0, ultimoReset: d.reset || 0 };
-        j.info = { nome: d.nome, carro: d.carro };
+        j.info = { nome: d.nome, carro: d.carro, papel: d.papel || 'piloto' };
         this.cb.entrou(key, j.info);
-      } else if (d.nome !== j.info.nome || d.carro !== j.info.carro) {
-        j.info.nome = d.nome; j.info.carro = d.carro;
+      } else if (d.nome !== j.info.nome || d.carro !== j.info.carro || (d.papel || 'piloto') !== j.info.papel) {
+        j.info.nome = d.nome; j.info.carro = d.carro; j.info.papel = d.papel || 'piloto';
         this.cb.mudou(key, j.info);
       }
       if (d.quer && d.quer !== j.quer) this.iniciarRTC(j, d.quer);
@@ -114,10 +114,10 @@
     }, 1500);
   }
   Celular.prototype.aberto = function () { return this.dc && this.dc.readyState === 'open'; };
-  Celular.prototype.entrar = function (nome, carro) {
+  Celular.prototype.entrar = function (nome, carro, papel) {
     this.entrou = true;
     var self = this;
-    return FB.patch(this.base + '/c/' + this.key, { nome: nome, carro: carro, t: Date.now() }).then(function () {
+    return FB.patch(this.base + '/c/' + this.key, { nome: nome, carro: carro, papel: papel || 'piloto', t: Date.now() }).then(function () {
       if (!self.aberto()) self.conectar();
     });
   };
@@ -157,7 +157,7 @@
   // controle: lista [x, a, r, nitro, míssil, escudo, começar] → [x, a, r, nitro, seq, míssil, escudo, começar]
   // pelo WebRTC sempre, pelo Firebase só um envio por vez
   Celular.prototype.controle = function (l, forcar) {
-    var c = [l[0], l[1], l[2], l[3], ++this.seq, l[4], l[5], l[6]];
+    var c = [l[0], l[1], l[2], l[3], ++this.seq, l[4], l[5], l[6], l[7]];
     if (this.mandar({ c: c })) return;
     if (this.emVoo && !forcar) { this.seq--; return; }
     var self = this; this.emVoo = true;
