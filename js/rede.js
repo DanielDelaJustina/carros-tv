@@ -154,9 +154,10 @@
       ['catch'](function (e) { self.cb.estado('erro: ' + e); });
   };
   Celular.prototype.mandar = function (m) { if (this.aberto()) { try { this.dc.send(JSON.stringify(m)); return true; } catch (e) {} } return false; };
-  // controle: [x, a, r, n]; pelo WebRTC sempre, pelo Firebase só um envio por vez
-  Celular.prototype.controle = function (x, a, r, n, forcar) {
-    var c = [x, a, r, n, ++this.seq];
+  // controle: lista [x, a, r, nitro, míssil, escudo, começar] → [x, a, r, nitro, seq, míssil, escudo, começar]
+  // pelo WebRTC sempre, pelo Firebase só um envio por vez
+  Celular.prototype.controle = function (l, forcar) {
+    var c = [l[0], l[1], l[2], l[3], ++this.seq, l[4], l[5], l[6]];
     if (this.mandar({ c: c })) return;
     if (this.emVoo && !forcar) { this.seq--; return; }
     var self = this; this.emVoo = true;

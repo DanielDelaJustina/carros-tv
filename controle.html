@@ -39,12 +39,15 @@
   <div class="tela jogo" id="telaJogo">
     <div class="barraTopo" id="barraTopo">
       <b id="eu">—</b><span id="estado">conectando…</span><span class="esp"></span>
-      <button id="btEstrada">↺ Estrada</button><button id="btTrocar">Carro</button><button id="btSair">Sair</button><button id="btTela">⛶</button>
+      <button id="btComecar" class="comecar">▶ COMEÇAR</button><button id="btEstrada">↺ Estrada</button><button id="btTrocar">Carro</button><button id="btSair">Sair</button><button id="btTela">⛶</button>
     </div>
-    <div class="vel"><b id="kmh">0</b> km/h<div class="nb"><i id="nitroBar"></i></div></div>
+    <div class="vel"><b id="kmh">0</b> km/h<div class="vb"><i id="vidaBar"></i></div><div class="nb"><i id="nitroBar"></i></div></div>
     <button class="bt" id="btNitro">🔥 NITRO<small id="nitroQtd">3 de 3</small></button>
+    <button class="bt" id="btMissil">🚀 MÍSSIL<small id="missilQtd">3 de 3</small></button>
+    <button class="bt" id="btEscudo">🛡 ESCUDO<small id="escudoQtd">pronto</small></button>
     <button class="bt" id="btAcel">ACELERA</button>
     <button class="bt" id="btRe">FREIO / RÉ</button>
+    <div id="avisoCel" class="avisoCel escondido"></div>
     <div id="direcao"><div class="base" id="dBase"></div><div class="pino" id="dPino"></div><div class="dica">arraste para os lados</div></div>
   </div>
 

@@ -12,8 +12,12 @@
   <div id="gl"></div>
   <div class="vinheta"></div>
   <div id="hud">
-    <div class="topo"><div class="t1 titulo">PÓ &amp; PÓLVORA</div><div class="t2">ESTRADA LIVRE · TESTE DOS CARROS</div></div>
-    <div class="canto"><span class="caixinha" id="fps">-- fps</span><span class="caixinha verde" id="qtd">0/4 JOGADORES</span></div>
+    <div class="topo"><div class="t1 titulo">PÓ &amp; PÓLVORA</div><div class="t2">INCURSÃO NO DESERTO</div></div>
+    <div class="canto"><span class="caixinha" id="fps">-- fps</span><span class="caixinha verde" id="qtd">0/2 JOGADORES</span><button class="caixinha botaoCanto" id="btTela2">⛶</button></div>
+    <canvas id="mapa"></canvas>
+    <div id="placar"></div>
+    <div id="mensagem"></div>
+    <div id="resultado" class="escondido"></div>
     <div id="etiquetas"></div>
     <div id="divisor"></div>
     <div id="avisos"></div>
@@ -26,7 +30,7 @@
         <div class="sub">Aponte a câmera do celular para o QR code<br>ou abra o endereço e digite o código:</div>
         <div class="cod" id="cod">-----</div>
         <div class="link" id="link"></div>
-        <button id="btSom" autofocus>🔊 Ativar som</button>
+        <button id="btSom" autofocus>🔊 Ativar som</button> <button id="btTela" class="btLobby">⛶ Tela cheia</button>
       </div>
     </div>
     <div id="erros"></div>
@@ -39,6 +43,7 @@
   <script src="js/mundo.js"></script>
   <script src="js/carros.js"></script>
   <script src="js/rede.js"></script>
+  <script src="js/incursao.js"></script>
   <script src="js/jogar.js"></script>
 </body>
 </html>

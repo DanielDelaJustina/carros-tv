@@ -622,8 +622,8 @@
       gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
     });
-    var fumaca = new Particulas(T, Q ? 900 : 500, false, texFumaca, cena.fog);
-    var fogo = new Particulas(T, Q ? 320 : 180, true, texFogo, cena.fog);
+    var fumaca = new Particulas(T, Q ? 1100 : 600, false, texFumaca, cena.fog);
+    var fogo = new Particulas(T, Q ? 700 : 400, true, texFogo, cena.fog);
     var poeira = new Particulas(T, Q ? 500 : 280, false, texFumaca, cena.fog);
     cena.add(poeira.obj); cena.add(fumaca.obj); cena.add(fogo.obj);
 
@@ -693,6 +693,8 @@
       // fração de capim e moitas desenhados (1 = tudo)
       densidade: function (f) { for (var q = 0; q < densos.length; q++) densos[q].count = Math.max(1, Math.floor(densos[q].total * f)); },
       poeiraCarro: poeiraCarro,
+      fx: { fogo: fogo, fumaca: fumaca, poeira: poeira },
+      texFogo: texFogo,
       msMontagem: Date.now() - t0
     };
   }

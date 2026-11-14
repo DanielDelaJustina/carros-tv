@@ -34,8 +34,21 @@
     },
     msg: function (m) {
       if (m.vib && navigator.vibrate) navigator.vibrate(m.vib);
+      if (m.fim !== undefined) mostrarFim(m.fim);
       if (m.hud) {
-        $('kmh').textContent = m.hud.v;
+        var h = m.hud;
+        $('kmh').textContent = h.v;
+        $('vidaBar').style.width = (h.hp || 0) + '%';
+        $('vidaBar').className = h.hp < 35 ? 'baixa' : '';
+        $('missilQtd').textContent = h.m + ' de 3';
+        $('btMissil').className = 'bt' + (h.m < 1 ? ' vazio' : '');
+        $('escudoQtd').textContent = h.e === 'pronto' ? 'pronto' : h.e === 'ativo' ? 'ATIVO!' : h.e + ' s';
+        $('btEscudo').className = 'bt' + (h.e === 'ativo' ? ' on' : h.e !== 'pronto' ? ' vazio' : '');
+        $('btComecar').style.display = h.f === 'livre' ? '' : 'none';
+        var av = $('avisoCel');
+        if (h.fora) { av.textContent = 'Acabaram as vidas da equipe… torça pelo outro!'; av.className = 'avisoCel'; }
+        else if (h.morto) { av.textContent = 'DESTRUÍDO! Voltando em ' + h.morto + '…'; av.className = 'avisoCel'; }
+        else if (!fimAberto) av.className = 'avisoCel escondido';
         var cg = m.hud.c || 0;
         $('nitroBar').style.width = Math.round(cg / 3 * 100) + '%';
         var bt = $('btNitro');
@@ -46,7 +59,15 @@
     latencia: function (ms, canal) { lat = Math.round(ms) + ' ms' + (canal === 'Firebase' ? ' (internet)' : ''); mostrarEstado(); }
   });
 
-  var entrou = false, ultimaCheia = null;
+  var entrou = false, ultimaCheia = null, fimAberto = false;
+  function mostrarFim(res) {
+    var av = $('avisoCel');
+    if (!res) { fimAberto = false; av.className = 'avisoCel escondido'; return; }
+    fimAberto = true;
+    var h = '<b>' + (res.vitoria ? 'VITÓRIA!' : 'DERROTA') + '</b><br>' + res.abates + ' bots destruídos';
+    for (var i = 0; i < res.placar.length; i++) { var p = res.placar[i]; h += '<br><span style="color:' + p.cor + '">' + p.nome + '</span>: ' + p.abates + ' destruídos, ' + p.mortes + ' mortes'; }
+    av.innerHTML = h; av.className = 'avisoCel fim';
+  }
   // sair: tira o carro da TV e libera a vaga
   function sair(msg) {
     entrou = false;
@@ -87,7 +108,7 @@
   window.addEventListener('pagehide', function () { /* mantém o jogador; sai só pelo botão da TV ou ao fechar a sala */ });
 
   // ---------------- controles
-  var ctrl = { x: 0, a: 0, r: 0, n: 0 }, mudou = true;
+  var ctrl = { x: 0, a: 0, r: 0, n: 0, m: 0, e: 0, s: 0 }, mudou = true;
   function botao(id, campo) {
     var el = $(id);
     function liga(v) { if (ctrl[campo] !== v) { ctrl[campo] = v; mudou = true; enviar(true); } el.classList.toggle('on', !!v); }
@@ -100,9 +121,14 @@
   }
   botao('btAcel', 'a'); botao('btRe', 'r');
   // nitro: um toque ativa (manda um contador de toques, que não se perde se um pacote sumir)
-  function tocarNitro(e) { if (e) e.preventDefault(); ctrl.n++; mudou = true; enviar(true); if (navigator.vibrate) navigator.vibrate(30); }
-  $('btNitro').addEventListener('touchstart', tocarNitro);
-  $('btNitro').addEventListener('mousedown', function () { tocarNitro(); });
+  function tocar(campo) { ctrl[campo]++; mudou = true; enviar(true); if (navigator.vibrate) navigator.vibrate(30); }
+  function tocarNitro() { tocar('n'); }
+  function botaoToque(id, campo) {
+    $(id).addEventListener('touchstart', function (e) { e.preventDefault(); tocar(campo); });
+    $(id).addEventListener('mousedown', function () { tocar(campo); });
+  }
+  botaoToque('btNitro', 'n'); botaoToque('btMissil', 'm'); botaoToque('btEscudo', 'e');
+  $('btComecar').onclick = function () { tocar('s'); };
 
   // direção flutuante: onde o dedo encosta vira o centro
   var dir = $('direcao'), pino = $('dPino'), base = $('dBase'), toqueId = null, cx = 0, cy = 0, ALC = 75;
@@ -144,13 +170,13 @@
     if (!entrou) return;
     var agora = Date.now(), vivo = rede.aberto() ? 150 : 1000;
     if (!mudou && !forcar && agora - ultimoEnvio < vivo) return;
-    rede.controle(ctrl.x, ctrl.a, ctrl.r, ctrl.n, forcar);
+    rede.controle([ctrl.x, ctrl.a, ctrl.r, ctrl.n, ctrl.m, ctrl.e, ctrl.s], forcar);
     mudou = false; ultimoEnvio = agora;
   }
   setInterval(function () { enviar(false); }, 33);
 
   // teclado (testar no computador)
   var mapa = { 37: ['x', -1], 39: ['x', 1], 38: ['a', 1], 40: ['r', 1] };
-  document.addEventListener('keydown', function (e) { if (e.keyCode === 16 && !e.repeat) tocarNitro(); var m = mapa[e.keyCode]; if (m && ctrl[m[0]] !== m[1]) { ctrl[m[0]] = m[1]; mudou = true; } });
+  document.addEventListener('keydown', function (e) { if (e.keyCode === 16 && !e.repeat) tocarNitro(); if (e.keyCode === 77 && !e.repeat) tocar('m'); if (e.keyCode === 69 && !e.repeat) tocar('e'); if (e.keyCode === 67 && !e.repeat) tocar('s'); var m = mapa[e.keyCode]; if (m && ctrl[m[0]] !== m[1]) { ctrl[m[0]] = m[1]; mudou = true; } });
   document.addEventListener('keyup', function (e) { var m = mapa[e.keyCode]; if (m) { ctrl[m[0]] = 0; mudou = true; } });
 })();

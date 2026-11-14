@@ -1,5 +1,5 @@
 // TV: sala + estrada livre com os carros dirigidos pelos celulares.
-// Parâmetros: ?teclado=1 (um carro no teclado: setas, Shift = nitro, R = voltar à estrada)  ?r=540|720|1080  ?q=0
+// Parâmetros: ?teclado=1 (um carro no teclado: setas, Shift = nitro, M = míssil, E = escudo, C = começar, R = voltar à estrada; F = tela cheia)  ?r=540|720|1080  ?q=0
 (function () {
   function $(id) { return document.getElementById(id); }
   function param(n, pad) { var m = new RegExp('[?&]' + n + '=([^&]*)').exec(location.search); return m ? decodeURIComponent(m[1]) : pad; }
@@ -91,6 +91,42 @@
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.08); g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
       src.connect(f); f.connect(g); g.connect(this.mestre); src.start(t); src.stop(t + 1);
     },
+    tiro: function (vol) {
+      if (!this.ctx) return;
+      var c = this.ctx, t = c.currentTime;
+      if (this.ultTiro && t - this.ultTiro < 0.05) return;
+      this.ultTiro = t;
+      var src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+      src.buffer = this.ruido; f.type = 'bandpass'; f.frequency.value = 1500 + Math.random() * 600; f.Q.value = 0.9;
+      g.gain.setValueAtTime(0.13 * vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+      src.connect(f); f.connect(g); g.connect(this.mestre); src.start(t, Math.random()); src.stop(t + 0.08);
+    },
+    explosao: function (forca) {
+      if (!this.ctx) return;
+      var c = this.ctx, t = c.currentTime, src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+      src.buffer = this.ruido; f.type = 'lowpass'; f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(120, t + 1.2);
+      g.gain.setValueAtTime(Math.min(0.9, 0.45 * forca), t); g.gain.exponentialRampToValueAtTime(0.001, t + 1.3);
+      src.connect(f); f.connect(g); g.connect(this.mestre); src.start(t, Math.random()); src.stop(t + 1.35);
+      var o = c.createOscillator(), go = c.createGain(); o.type = 'sine';
+      o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(28, t + 0.6);
+      go.gain.setValueAtTime(0.5 * Math.min(1.5, forca), t); go.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+      o.connect(go); go.connect(this.mestre); o.start(t); o.stop(t + 0.75);
+    },
+    missil: function () {
+      if (!this.ctx) return;
+      var c = this.ctx, t = c.currentTime, src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+      src.buffer = this.ruido; f.type = 'bandpass'; f.Q.value = 2;
+      f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(2400, t + 0.5);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.05); g.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+      src.connect(f); f.connect(g); g.connect(this.mestre); src.start(t, Math.random()); src.stop(t + 0.75);
+    },
+    escudo: function () {
+      if (!this.ctx) return;
+      var c = this.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain(); o.type = 'triangle';
+      o.frequency.setValueAtTime(260, t); o.frequency.exponentialRampToValueAtTime(980, t + 0.35);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.2, t + 0.04); g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+      o.connect(g); g.connect(this.mestre); o.start(t); o.stop(t + 0.55);
+    },
     entrada: function () {
       if (!this.ctx) return;
       var c = this.ctx, t = c.currentTime;
@@ -102,6 +138,15 @@
     }
   };
   $('btSom').onclick = function () { Som.ligar(); this.textContent = '🔊 Som ligado'; };
+  // tela cheia na TV (botão no lobby, botão no canto e tecla F)
+  function telaCheia() {
+    var el = document.documentElement, f = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen;
+    var sair = document.exitFullscreen || document.webkitExitFullscreen || document.webkitCancelFullScreen;
+    var cheia = document.fullscreenElement || document.webkitFullscreenElement || document.webkitCurrentFullScreenElement;
+    try { if (cheia) { if (sair) sair.call(document); } else if (f) f.call(el); } catch (e) {}
+    Som.ligar();
+  }
+  $('btTela').onclick = telaCheia; $('btTela2').onclick = telaCheia;
 
   // ---------------- jogadores
   var jogadores = {}, ordem = []; // key → jogador
@@ -140,12 +185,14 @@
       '<circle cx="50" cy="50" r="6" fill="#ddd"/><text class="kmh" x="50" y="80" text-anchor="middle" fill="#fff" font-size="20" font-weight="700">0</text>' +
       '<text x="50" y="95" text-anchor="middle" fill="#b8a690" font-size="10">km/h</text></svg>' +
       '<div style="flex:1;min-width:0"><div class="nome"></div><div class="tipo"></div>' +
-      '<div class="rot"><span>NITRO</span><span class="sinal">●</span></div><div class="barra"><i></i></div></div>';
+      '<div class="rot"><span>VIDA</span><span class="sinal">●</span></div><div class="barra vida"><i></i></div>' +
+      '<div class="rot"><span>NITRO</span><span class="itens"></span></div><div class="barra nitro"><i></i></div></div>';
     $('cartoes').appendChild(j.cartao);
     j.ui = { arco: j.cartao.querySelector('.arco'), ponteiro: j.cartao.querySelector('.ponteiro'), kmh: j.cartao.querySelector('.kmh'),
-      nitro: j.cartao.querySelector('.barra i'), sinal: j.cartao.querySelector('.sinal'), nome: j.cartao.querySelector('.nome'), tipo: j.cartao.querySelector('.tipo') };
+      nitro: j.cartao.querySelector('.barra.nitro i'), vida: j.cartao.querySelector('.barra.vida i'), itens: j.cartao.querySelector('.itens'), sinal: j.cartao.querySelector('.sinal'), nome: j.cartao.querySelector('.nome'), tipo: j.cartao.querySelector('.tipo') };
     preencherCartao(j);
     jogadores[key] = j;
+    Incursao.prepararJogador(j);
     Som.motor(j); Som.entrada();
     aviso(info.nome + ' entrou com o ' + NOMES_CARRO[tipo], CORES_CSS[slot]);
     if (rede && key !== 'teclado') rede.publicarJogador(key, { slot: slot, cor: CORES_CSS[slot], tv: SESSAO });
@@ -172,6 +219,7 @@
   function removerJogador(key) {
     var j = jogadores[key]; if (!j) return;
     cena.remove(j.m.obj); cena.remove(j.m.sombra);
+    Incursao.removerJogador(j);
     Som.parar(j);
     if (j.etq.parentNode) j.etq.parentNode.removeChild(j.etq);
     if (j.cartao.parentNode) j.cartao.parentNode.removeChild(j.cartao);
@@ -199,6 +247,13 @@
     $('mini').classList.toggle('escondido', n === 0 || n >= MAX);
   }
 
+  // botões de toque: o celular manda quantas vezes já tocou; a TV age quando o número sobe
+  function contador(j, nome, valor, acao) {
+    if (valor === undefined) return;
+    if (j[nome] === undefined || valor < j[nome]) j[nome] = valor;
+    else if (valor > j[nome]) { j[nome] = valor; acao(j); }
+  }
+
   // ---------------- rede
   var rede = null;
   function iniciarRede() {
@@ -210,8 +265,10 @@
         var j = jogadores[key]; if (!j) return;
         j.ent.x = c[0]; j.ent.a = c[1]; j.ent.r = c[2]; j.ultimoCtrl = Date.now();
         // c[3] = quantos toques no nitro o celular já deu (contador não se perde se um pacote sumir)
-        if (j.nitroCont === undefined || c[3] < j.nitroCont) j.nitroCont = c[3];
-        else if (c[3] > j.nitroCont) { j.nitroCont = c[3]; nitro(j); }
+        contador(j, 'nitroCont', c[3], nitro);
+        contador(j, 'missilCont', c[5], Incursao.missil);
+        contador(j, 'escudoCont', c[6], Incursao.escudo);
+        contador(j, 'comecarCont', c[7], function () { Incursao.comecar(); });
       },
       reset: function (key) { var j = jogadores[key]; if (j) voltarEstrada(j); },
       canal: function (key, nome) { var j = jogadores[key]; if (j) { j.canal = nome; j.ui.sinal.className = 'sinal' + (nome === 'WebRTC' ? '' : ' fb'); } }
@@ -224,6 +281,10 @@
     teclas[e.keyCode] = true;
     if (TECLADO && e.keyCode === 82 && jogadores.teclado) voltarEstrada(jogadores.teclado);
     if (TECLADO && e.keyCode === 16 && !e.repeat && jogadores.teclado) nitro(jogadores.teclado);
+    if (TECLADO && e.keyCode === 77 && !e.repeat && jogadores.teclado) Incursao.missil(jogadores.teclado);
+    if (TECLADO && e.keyCode === 69 && !e.repeat && jogadores.teclado) Incursao.escudo(jogadores.teclado);
+    if (TECLADO && e.keyCode === 67 && !e.repeat) Incursao.comecar();
+    if (e.keyCode === 70 && !e.repeat) telaCheia();
     if (TECLADO && [37, 38, 39, 40, 32].indexOf(e.keyCode) >= 0) e.preventDefault();
   });
   document.addEventListener('keyup', function (e) { teclas[e.keyCode] = false; });
@@ -248,6 +309,16 @@
     var re = v.v < -2 ? -1 : 1, fx = Math.sin(v.h) * re, fz = Math.cos(v.h) * re;
     var dist = dividido ? 9.5 : 11, alt = dividido ? 3.4 : 4.6;
     seguir(j.cam, v.x - fx * dist, v.y + alt, v.z - fz * dist, v.x + fx * 7, v.y + 1.4, v.z + fz * 7, dt);
+    if (j.tremor > 0.02) {
+      j.cam.cam.position.x += (Math.random() - 0.5) * j.tremor; j.cam.cam.position.y += (Math.random() - 0.5) * j.tremor;
+      j.tremor *= Math.exp(-dt * 7);
+    }
+  }
+  function tremer(x, z, forca) {
+    for (var k in jogadores) {
+      var j = jogadores[k], d = Math.sqrt((j.ve.x - x) * (j.ve.x - x) + (j.ve.z - z) * (j.ve.z - z));
+      j.tremor = Math.max(j.tremor || 0, forca * 1.1 * Math.max(0, 1 - d / 70));
+    }
   }
   function ordenados() {
     var l = [];
@@ -299,13 +370,75 @@
     renderer.setScissorTest(false);
   }
 
+  // ---------------- placar, mensagens, minimapa e resultado
+  function placar() {
+    var E = Incursao.estado, el = $('placar'), txt;
+    if (E.fase === 'livre') txt = 'ESTRADA LIVRE · toque <b>▶ COMEÇAR</b> no celular';
+    else if (E.fase === 'contagem') txt = 'PREPAREM-SE!';
+    else {
+      var s = Math.floor(E.tempo), mm = Math.floor(s / 60), ss = s % 60;
+      txt = 'ONDA <b>' + E.onda + '/' + Incursao.ONDAS + '</b> · BOTS DESTRUÍDOS <b>' + E.abates + '</b> · VIDAS <b>' + E.vidas + '</b> · ' + (mm < 10 ? '0' : '') + mm + ':' + (ss < 10 ? '0' : '') + ss;
+    }
+    if (el.getAttribute('data-t') !== txt) { el.innerHTML = txt; el.setAttribute('data-t', txt); }
+  }
+  var msgTimer = null;
+  function mensagem(txt, seg) {
+    var el = $('mensagem');
+    el.textContent = txt; el.className = ''; void el.offsetWidth; el.className = 'mostra';
+    clearTimeout(msgTimer); msgTimer = setTimeout(function () { el.className = ''; }, seg * 1000);
+  }
+  var mapaG = null, mapaFundo = null, MT = 200;
+  function mx(x) { return (x + 450) / 900 * MT; }
+  function prepararMapa() {
+    var cv = $('mapa'); cv.width = MT; cv.height = MT; mapaG = cv.getContext('2d');
+    mapaFundo = document.createElement('canvas'); mapaFundo.width = MT; mapaFundo.height = MT;
+    var g = mapaFundo.getContext('2d'), e = mundo.estrada;
+    g.fillStyle = 'rgba(120,70,40,.35)'; g.fillRect(0, 0, MT, MT);
+    g.strokeStyle = '#d9c3a0'; g.lineWidth = 4; g.beginPath();
+    for (var i = 0; i <= e.n; i += 3) { var q = i % e.n; if (!i) g.moveTo(mx(e.px[q]), mx(e.pz[q])); else g.lineTo(mx(e.px[q]), mx(e.pz[q])); }
+    g.closePath(); g.stroke();
+  }
+  function desenharMapa() {
+    if (!mapaG) return;
+    var g = mapaG, bots = Incursao.bots(), i;
+    g.clearRect(0, 0, MT, MT);
+    g.save(); g.beginPath(); g.arc(MT / 2, MT / 2, MT / 2 - 2, 0, 6.29); g.clip();
+    g.drawImage(mapaFundo, 0, 0);
+    g.fillStyle = '#ff3a2a';
+    for (i = 0; i < bots.length; i++) if (!bots[i].morto) { g.beginPath(); g.arc(mx(bots[i].ve.x), mx(bots[i].ve.z), bots[i].chefe ? 7 : 4.5, 0, 6.29); g.fill(); }
+    for (var k in jogadores) {
+      var j = jogadores[k]; if (j.morto > 0 || j.fora) continue;
+      var x = mx(j.ve.x), z = mx(j.ve.z), h = j.ve.h;
+      g.fillStyle = CORES_CSS[j.slot]; g.strokeStyle = '#000'; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(x + Math.sin(h) * 9, z + Math.cos(h) * 9);
+      g.lineTo(x + Math.sin(h + 2.5) * 6, z + Math.cos(h + 2.5) * 6); g.lineTo(x + Math.sin(h - 2.5) * 6, z + Math.cos(h - 2.5) * 6);
+      g.closePath(); g.fill(); g.stroke();
+    }
+    g.restore();
+  }
+  function mostrarFim(res) {
+    var el = $('resultado');
+    if (!res) { el.classList.add('escondido'); for (var k in jogadores) if (rede && k !== 'teclado') rede.enviar(k, { fim: 0 }); return; }
+    var min = Math.floor(res.tempo / 60), seg = res.tempo % 60;
+    var h = '<h2 class="titulo">' + (res.vitoria ? 'VITÓRIA!' : 'DERROTA') + '</h2>' +
+      '<div class="resumo">' + (res.vitoria ? 'As 5 ondas foram vencidas' : 'Chegaram até a onda ' + res.onda) + ' · ' + res.abates + ' bots destruídos · ' + min + ' min ' + seg + ' s</div>' +
+      '<table><tr><th></th><th>DESTRUIU</th><th>DANO</th><th>MORREU</th></tr>';
+    for (var i = 0; i < res.placar.length; i++) {
+      var p = res.placar[i];
+      h += '<tr><td style="color:' + p.cor + '">' + p.nome + '</td><td>' + p.abates + '</td><td>' + p.dano + '</td><td>' + p.mortes + '</td></tr>';
+    }
+    h += '</table><div class="resumo">Nova rodada liberada em alguns segundos…</div>';
+    el.innerHTML = h; el.classList.remove('escondido');
+    for (k in jogadores) if (rede && k !== 'teclado') rede.enviar(k, { fim: res });
+  }
+
   // ---------------- laço principal
-  var ultimoHud = 0, fq = 0, fDesde = 0, ultimoFpsSalvo = 0, fpsAtual = 0;
+  var ultimoMapa = 0, ultimoHud = 0, fq = 0, fDesde = 0, ultimoFpsSalvo = 0, fpsAtual = 0;
   function quadro(dt, t) {
-    var lista = [], k, j;
-    for (k in jogadores) lista.push(jogadores[k].ve);
+    var lista = Incursao.veiculos(), k, j;
     for (k in jogadores) {
       j = jogadores[k];
+      if (j.morto > 0 || j.fora) continue;
       if (k === 'teclado') {
         j.ent.x = teclas[37] ? -1 : teclas[39] ? 1 : 0; j.ent.a = teclas[38] ? 1 : 0; j.ent.r = teclas[40] ? 1 : 0;
       } else if (Date.now() - j.ultimoCtrl > 2500 && j.canal === 'Firebase' && j.ent.a) { j.ent.a = 0; } // controle sumiu: solta o acelerador
@@ -320,6 +453,7 @@
       }
       Som.atualizar(j);
     }
+    Incursao.atualizar(dt, t);
     mundo.atualizar(dt, camerasAtivas());
     desenharTela(dt);
 
@@ -333,10 +467,19 @@
         j.ui.arco.setAttribute('stroke-dasharray', (fr * 200) + ' 400');
         j.ui.ponteiro.setAttribute('transform', 'rotate(' + (-135 + fr * 270) + ' 50 50)');
         j.ui.nitro.style.width = Math.round(j.ve.nitro * 100) + '%';
-        j.ui.nitro.parentNode.className = 'barra' + (j.ve.usandoNitro ? ' ativo' : '');
-        if (rede && k !== 'teclado' && Math.floor(t * 4) !== j.ultimoEnvio) { j.ultimoEnvio = Math.floor(t * 4); rede.enviar(k, { hud: { v: kmh, c: Math.round(j.ve.cargas * 100) / 100, b: j.ve.usandoNitro ? 1 : 0 } }); }
+        j.ui.nitro.parentNode.className = 'barra nitro' + (j.ve.usandoNitro ? ' ativo' : '');
+        var h = Incursao.hud(j);
+        j.ui.vida.style.width = h.hp + '%';
+        j.ui.vida.parentNode.className = 'barra vida' + (h.hp < 35 ? ' baixa' : '');
+        j.ui.itens.textContent = 'MÍSSEIS ' + h.m + ' · ESCUDO ' + (h.e === 'pronto' ? 'OK' : h.e === 'ativo' ? 'ATIVO' : h.e + 's');
+        if (rede && k !== 'teclado' && Math.floor(t * 4) !== j.ultimoEnvio) {
+          j.ultimoEnvio = Math.floor(t * 4);
+          h.v = kmh; h.c = Math.round(j.ve.cargas * 100) / 100; h.b = j.ve.usandoNitro ? 1 : 0;
+          rede.enviar(k, { hud: h });
+        }
       }
     }
+    if (t - ultimoMapa > 0.2) { ultimoMapa = t; desenharMapa(); placar(); }
     // fps vão para o Firebase a cada 10 s (para o Claude conferir sem precisar de foto)
     if (t - ultimoFpsSalvo > 10 && fpsAtual) {
       ultimoFpsSalvo = t;
@@ -349,6 +492,14 @@
     try {
       mundo = Mundo.criar(T, cena, { q: Q });
       Carros.iniciar(T);
+      Incursao.iniciar({
+        T: T, cena: cena, mundo: mundo, som: Som,
+        jogadores: function () { return ordenados(); },
+        enviar: function (key, msg) { if (rede && key !== 'teclado') rede.enviar(key, msg); },
+        aviso: aviso, mensagem: mensagem, tremer: tremer, fim: mostrarFim,
+        corCss: function (j) { return CORES_CSS[j.slot]; }, corHex: function (j) { return CORES[j.slot]; }
+      });
+      prepararMapa();
     } catch (e) { window.onerror(String(e && e.stack || e), '', 0); return; }
     mundo.escalaParticulas(RES, 62);
     $('carregando').style.display = 'none';
@@ -371,8 +522,10 @@
       fq++;
       if (t - fDesde >= 1000) { fpsAtual = Math.round(fq * 1000 / (t - fDesde)); $('fps').textContent = fpsAtual + ' fps'; fq = 0; fDesde = t; }
       quadro(dt, t / 1000);
-      requestAnimationFrame(loop);
+      proximo(loop);
     }
-    requestAnimationFrame(loop);
+    // ?timer=1: roda por timer (para testar com a aba escondida, onde o navegador pausa a animação)
+    var proximo = param('timer', '') === '1' ? function (f) { setTimeout(function () { f(performance.now()); }, 33); } : requestAnimationFrame.bind(window);
+    proximo(loop);
   }, 50);
 })();

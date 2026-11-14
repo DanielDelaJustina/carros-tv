@@ -90,7 +90,10 @@
     g.rotateY(-Math.PI / 2);
     this.add(g, mat, x, y, z);
   };
+  var SIMPLES = false; // robôs: cada carro vira 1 malha só (cores por vértice), sem enfeites
+  var MAT_SIMPLES = null;
   Montador.prototype.malhas = function (grupo) {
+    if (SIMPLES) return this.malhaUnica(grupo);
     for (var id in this.porMat) {
       var lista = this.porMat[id], tot = 0, q;
       for (q = 0; q < lista.length; q++) tot += lista[q].attributes.position.count;
@@ -110,6 +113,29 @@
       grupo.add(new T.Mesh(g, comVertice(this.mats[id])));
     }
   };
+  Montador.prototype.malhaUnica = function (grupo) {
+    var tot = 0, id, q, lista;
+    for (id in this.porMat) for (q = 0; q < this.porMat[id].length; q++) tot += this.porMat[id][q].attributes.position.count;
+    var P = new Float32Array(tot * 3), C = new Float32Array(tot * 3), o = 0, b0 = this.base || 0;
+    for (id in this.porMat) {
+      lista = this.porMat[id]; var cor = this.mats[id].color || { r: 1, g: 1, b: 1 };
+      for (q = 0; q < lista.length; q++) {
+        var a = lista[q].attributes.position.array;
+        P.set(a, o);
+        for (var v = 0; v < a.length; v += 3) {
+          var luz = 0.55 + 0.45 * Math.min(1, Math.max(0, (a[v + 1] + b0 - 0.25) / 1.2));
+          C[o + v] = cor.r * luz; C[o + v + 1] = cor.g * luz; C[o + v + 2] = cor.b * luz;
+        }
+        o += a.length;
+      }
+    }
+    var g = new T.BufferGeometry();
+    g.setAttribute('position', new T.BufferAttribute(P, 3));
+    g.setAttribute('color', new T.BufferAttribute(C, 3));
+    g.computeVertexNormals();
+    if (!MAT_SIMPLES) MAT_SIMPLES = new T.MeshLambertMaterial({ vertexColors: true });
+    grupo.add(new T.Mesh(g, MAT_SIMPLES));
+  };
   function forma(pts) {
     var s = new T.Shape();
     s.moveTo(pts[0][0], pts[0][1]);
@@ -122,7 +148,7 @@
 
   // ------------------------------------------------ rodas com cravos
   function geoPneu(r, w, cravos) {
-    var g = new T.CylinderGeometry(r, r, w, 28, 1);
+    var g = new T.CylinderGeometry(r, r, w, SIMPLES ? 12 : 28, 1);
     var p = g.attributes.position;
     for (var i = 0; i < p.count; i++) {
       var x = p.getX(i), z = p.getZ(i), y = p.getY(i), rr = Math.sqrt(x * x + z * z);
@@ -139,6 +165,7 @@
     var pivo = new T.Group(); pivo.position.set(x, y, z); grupo.add(pivo);
     var gira = new T.Group(); pivo.add(gira);
     gira.add(new T.Mesh(geoPneu(r, w, cravos), M.pneu));
+    if (SIMPLES) return { pivo: pivo, gira: gira, frente: frente, r: r, lado: x > 0 ? 1 : -1 };
     var lado = x > 0 ? 1 : -1;
     var aro = new T.Mesh(cil(10), corAro || M.metal); aro.rotation.z = Math.PI / 2; aro.scale.set(r * 0.58, w * 1.04, r * 0.58); gira.add(aro);
     var cubo = new T.Mesh(cil(6), M.escuro); cubo.rotation.z = Math.PI / 2; cubo.scale.set(r * 0.2, w * 1.12, r * 0.2); gira.add(cubo);
@@ -161,6 +188,7 @@
     return texBrilho;
   }
   function luzes(g, lista, cor, opac, tam) {
+    if (SIMPLES) return { opacity: 0 };
     var mat = new T.SpriteMaterial({ map: brilho(), color: cor, blending: T.AdditiveBlending, depthWrite: false, transparent: true, opacity: opac });
     for (var i = 0; i < lista.length; i++) {
       var s = new T.Sprite(mat); s.position.set(lista[i][0], lista[i][1], lista[i][2]); s.scale.set(tam, tam, 1); g.add(s);
@@ -169,6 +197,7 @@
   }
   function cssCor(c) { return '#' + ('000000' + c.toString(16)).slice(-6); }
   function decal(g, num, cor, x, y, z, tam) {
+    if (SIMPLES) return;
     var c = document.createElement('canvas'); c.width = 128; c.height = 128;
     var cx = c.getContext('2d');
     cx.beginPath(); cx.arc(64, 64, 58, 0, 6.29); cx.fillStyle = '#f2ece2'; cx.fill();
@@ -182,6 +211,7 @@
     }
   }
   function antena(g, mt, M, cor, x, y, z) {
+    if (SIMPLES) return null;
     mt.cil(M.escuro, 0.018, 1.6, x, y + 0.8, z, 0, 0, 0, 5);
     var geo = new T.PlaneGeometry(0.62, 0.36, 8, 1); geo.translate(0.31, 0, 0);
     var b = new T.Mesh(geo, new T.MeshLambertMaterial({ color: cor, side: T.DoubleSide }));
@@ -384,7 +414,8 @@
 
   function Veiculo(mundo, modelo) {
     this.m = modelo; this.mundo = mundo;
-    this.p = PARAM[modelo.tipo];
+    var pb = PARAM[modelo.tipo]; this.p = {};
+    for (var kk in pb) this.p[kk] = pb[kk];
     this.x = 0; this.z = 0; this.y = 0; this.h = 0;
     this.v = 0; this.vl = 0; this.dir = 0; this.nitro = 1; this.usandoNitro = false;
     this.cargas = NITRO_MAX; this.tempoNitro = 0;
@@ -539,6 +570,11 @@
     iniciar: function (THREE) {
       T = THREE; BOX = new T.BoxGeometry(1, 1, 1); tmpO = new T.Object3D();
       vA = new T.Vector3(); vB = new T.Vector3(); qT = new T.Quaternion(); UP = new T.Vector3(0, 1, 0);
+    },
+    // robô inimigo: mesmo formato, mas leve (poucas malhas)
+    modeloBot: function (tipo, cor) {
+      SIMPLES = true;
+      try { return tipo === 'muscle' ? muscle(cor, 0) : buggy(cor, 0); } finally { SIMPLES = false; }
     },
     modelo: function (tipo, cor, num) { return tipo === 'muscle' ? muscle(cor, num || 1) : buggy(cor, num || 1); },
     Veiculo: Veiculo,

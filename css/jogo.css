@@ -29,6 +29,8 @@ body { background: #1b130d; color: #fff; font-family: "Rajdhani", "Segoe UI", Ar
 #lobby .link { font-size: 2vh; color: #b8a690; margin-top: 1.5vh; }
 #btSom { margin-top: 2vh; font-family: inherit; font-size: 2.6vh; font-weight: 700; padding: 1vh 2vw; border-radius: 10px; border: 3px solid #ffb347;
   background: #3a2414; color: #fff; }
+.btLobby { margin-top: 2vh; font-family: inherit; font-size: 2.6vh; font-weight: 700; padding: 1vh 2vw; border-radius: 10px; border: 3px solid #ffb347; background: #3a2414; color: #fff; }
+.btLobby:focus { background: #f0a040; color: #1b130d; outline: none; }
 #btSom:focus { background: #f0a040; color: #1b130d; outline: none; }
 
 /* entrada pequena (quando já tem gente jogando) */
@@ -47,7 +49,7 @@ body { background: #1b130d; color: #fff; font-family: "Rajdhani", "Segoe UI", Ar
 .cartao .tipo { font-size: 1.7vh; color: #b8a690; letter-spacing: 1px; margin-bottom: .6vh; }
 .cartao .barra { position: relative; height: 1.3vh; background: #2a1d14; border-radius: 1vh; overflow: hidden; margin-top: .3vh; }
 .cartao .barra i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #2f7dff, #6fd0ff); }
-.cartao .barra:after { content: ""; position: absolute; top: 0; bottom: 0; left: 33.3%; width: 33.3%; border-left: .3vh solid #120d0a; border-right: .3vh solid #120d0a; box-sizing: border-box; }
+.cartao .barra.nitro:after { content: ""; position: absolute; top: 0; bottom: 0; left: 33.3%; width: 33.3%; border-left: .3vh solid #120d0a; border-right: .3vh solid #120d0a; box-sizing: border-box; }
 .cartao .barra.ativo i { background: linear-gradient(90deg, #6fd0ff, #fff); box-shadow: 0 0 1vh #6fd0ff; }
 .cartao .rot { font-size: 1.6vh; color: #9fc8ff; font-weight: 700; letter-spacing: 1px; display: flex; justify-content: space-between; }
 .cartao .sinal { color: #7ee08a; } .cartao .sinal.fb { color: #ffc83a; }
@@ -130,3 +132,60 @@ body.dividido .cartao { position: absolute; left: 0; margin: 0; width: 19vw; pad
 body.dividido .cartao svg { width: 7.5vh; height: 7.5vh; }
 body.dividido .cartao.s0 { bottom: calc(50% + 1.4vh); }
 body.dividido .cartao.s1 { bottom: 1.4vh; }
+
+/* ================= parte 3: incursão ================= */
+.botaoCanto { pointer-events: auto; color: #fff; font-family: inherit; cursor: pointer; }
+.botaoCanto:focus { background: #f0a040; color: #1b130d; outline: none; }
+#mini { left: auto; right: 2vw; top: 9vh; }
+.cartao .barra.vida i { background: linear-gradient(90deg, #2fa64a, #8ee07a); }
+.cartao .barra.vida.baixa i { background: linear-gradient(90deg, #c22a1c, #ff6a48); }
+.cartao .itens { color: #e8d8c4; font-weight: 500; letter-spacing: 0; }
+#placar { position: absolute; top: 10vh; left: 50%; transform: translateX(-50%); background: rgba(16, 12, 10, .78); border-bottom: 2px solid #ff5a48;
+  padding: .5vh 1.6vw; font-size: 2.3vh; font-weight: 700; letter-spacing: 1px; white-space: nowrap; color: #e8d8c4; }
+#placar b { color: #fff; }
+body.dividido #placar { top: 50%; transform: translate(-50%, -50%); z-index: 2; border: 1px solid #f0a040; }
+#mensagem { position: absolute; top: 36%; left: 0; right: 0; text-align: center; font-family: "Black Ops One", "Rajdhani", sans-serif; font-size: 9vh;
+  color: #ffb347; text-shadow: 0 0 2vh rgba(0,0,0,.9), 0 .4vh 0 #5a2a10; display: none; }
+#mensagem.mostra { display: block; animation: msg .5s ease-out; }
+body.dividido #mensagem { top: 40%; font-size: 7vh; }
+@keyframes msg { 0% { transform: scale(1.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+#mapa { position: absolute; left: 1.5vw; top: 2.2vh; width: 22vh; height: 22vh; border-radius: 50%; border: 2px solid rgba(255,179,71,.7); background: rgba(16,12,10,.55); }
+body.dividido #mapa { left: auto; right: 1.5vw; top: 50%; margin-top: -11vh; width: 20vh; height: 20vh; }
+#resultado { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 56vw; background: rgba(16, 12, 10, .94);
+  border: 2px solid #f0a040; border-radius: 14px; padding: 3vh 2.5vw; text-align: center; z-index: 5; }
+#resultado h2 { margin: 0; font-size: 8vh; color: #ffb347; }
+#resultado .resumo { font-size: 2.4vh; color: #e8d8c4; margin: 1vh 0 2vh; }
+#resultado table { width: 100%; border-collapse: collapse; font-size: 2.8vh; }
+#resultado th { font-size: 1.8vh; color: #b8a690; letter-spacing: 1px; }
+#resultado td, #resultado th { padding: .8vh; border-bottom: 1px solid #3a2a1e; }
+#resultado td:first-child { text-align: left; font-weight: 700; }
+
+/* ----- celular: parte 3 (nitro, míssil e escudo em cima à esquerda; acelera e ré embaixo; direção à direita) ----- */
+.cel .bt small { display: block; font-size: 12px; font-weight: 500; opacity: .85; }
+.cel .bt.vazio { background: #2a2f3a !important; color: #7a8090; }
+#btNitro, #btMissil, #btEscudo { top: 56px; height: 24%; width: calc(12.6% - 4px); font-size: 15px; padding: 0; }
+#btNitro { left: 12px; }
+#btMissil { left: calc(12px + 12.6%); background: #8a3a1a; }
+#btMissil:active { background: #d0602a; }
+#btEscudo { left: calc(12px + 25.2%); background: #2a5a6a; }
+#btEscudo.on { background: #66ccff; color: #102a33; box-shadow: 0 0 18px #66ccff; }
+#btAcel { top: calc(56px + 24% + 8px); width: calc(37.8% - 4px); bottom: calc(16% + 20px); height: auto; }
+#btRe { bottom: 12px; width: calc(37.8% - 4px); height: 16%; top: auto; }
+#direcao { width: 52%; height: 56%; }
+.cel .vel .vb { width: 140px; height: 8px; background: #2a1d14; border-radius: 4px; overflow: hidden; margin: 3px auto 0; }
+.cel .vel .vb i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #2fa64a, #8ee07a); }
+.cel .vel .vb i.baixa { background: #ff5a48; }
+.cel .barraTopo .comecar { background: #2e9d4f; font-weight: 700; font-size: 15px; }
+.avisoCel { position: absolute; top: 120px; left: 42%; right: 12px; background: rgba(184,53,43,.92); border-radius: 12px; padding: 10px; text-align: center;
+  font-size: 16px; font-weight: 700; z-index: 3; pointer-events: none; }
+.avisoCel.fim { background: rgba(30,21,16,.95); border: 2px solid #f0a040; font-weight: 500; }
+.avisoCel.fim b { font-size: 24px; color: #ffb347; }
+.avisoCel.escondido { display: none; }
+@media (orientation: portrait) {
+  #btNitro, #btMissil, #btEscudo { top: 130px; height: 12%; width: calc(16% - 4px); font-size: 13px; }
+  #btMissil { left: calc(12px + 16%); } #btEscudo { left: calc(12px + 32%); }
+  #btAcel { top: calc(130px + 12% + 10px); width: 48%; height: 22%; bottom: auto; }
+  #btRe { top: calc(130px + 34% + 20px); bottom: auto; width: 48%; height: 11%; }
+  #direcao { width: 46%; height: 40%; }
+  .avisoCel { left: 12px; top: 100px; }
+}
