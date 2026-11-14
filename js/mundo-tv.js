@@ -8,10 +8,13 @@
   window.onerror = function (msg, src, linha) {
     var d = document.createElement('div'); d.textContent = '⚠ ' + msg + ' (' + String(src || '').split('/').pop() + ':' + linha + ')';
     $('erros').appendChild(d);
+    var c = $('carregando'); if (c && c.style.display !== 'none') { c.style.fontSize = '2.4vh'; c.textContent = 'ERRO: ' + d.textContent; }
     erros.push(String(msg) + ':' + linha);
+    FB.put(BASE + '/erro', { msg: String(msg), linha: linha, src: String(src || ''), ua: navigator.userAgent })['catch'](function () {});
   };
   var erros = [];
   var BASE = 'salas/PNEUS/mundo';
+  FB.put(BASE + '/etapa', { e: 'carregando', ua: navigator.userAgent, hora: new Date().toISOString() })['catch'](function () {});
   var RES = parseInt(param('r', '720'), 10), Q = parseInt(param('q', '1'), 10);
 
   var T = window.THREE;
@@ -146,6 +149,7 @@
     trocarCam(0);
     $('carregando').style.display = 'none';
     FB.del(BASE)['catch'](function () {}).then(function () {
+      FB.put(BASE + '/etapa', { e: 'pronto', ua: navigator.userAgent });
       FB.put(BASE + '/info', { ua: navigator.userAgent, r: RES, q: Q, ms: mundo.msMontagem, erros: erros, hora: new Date().toISOString() });
     });
     var ultimo = 0;
