@@ -397,6 +397,8 @@
     }
 
     var emissores = [];
+    var colisores = []; // círculos {x, z, r} que os carros não atravessam
+    function colide(x, z, r) { colisores.push({ x: x, z: z, r: r }); }
 
     // ------------------------------------------------ mesas (rochedos isolados no vale)
     var nMesas = 0, tent = 0;
@@ -417,6 +419,7 @@
       (function (base) {
         new Mont(pm.x, pm.y - 2 + alt / 2, pm.z, R() * 6).add(gm, 0, 0, 0, 0, 0, 0, 1, 1, 1, function (x, y, z) { return corRocha(y - base, x, z); });
       })(pm.y);
+      colide(pm.x, pm.z, raio * 1.15);
       nMesas++;
     }
 
@@ -447,6 +450,9 @@
     for (k = 0; k < 14; k++) ref.cil(0.45, 1.1, -6 + R() * 26, 0.55, 18 + R() * 6, R() < 0.5 ? [0.5, 0.25, 0.15] : [0.25, 0.35, 0.45], R() < 0.2 ? Math.PI / 2 : 0, R() * 3, 0, GCIL6);
     function pontoMundo(mont, x, y, z) { var v3 = new T.Vector3(x, y, z).applyMatrix4(mont.b); return v3; }
     var chamine = pontoMundo(ref, -26, 36.5, -12);
+    [[-14, 4, 6.3], [-2, -8, 5.3], [14, 8, 7.3], [26, -6, 3.4], [31, 1, 1.6], [-26, -12, 1.8], [-22, -20, 5.5], [-14, -20, 5.5], [-2, 10, 3.8], [-2, 18, 3.8]].forEach(function (c) {
+      var v3 = pontoMundo(ref, c[0], 0, c[1]); colide(v3.x, v3.z, c[2]);
+    });
     emissores.push({ tipo: 'fumaca', p: chamine, taxa: 5, t0: 4, t1: 26, vida: 9, cor: 0.3, vy: 5 });
     var tTomb = pontoMundo(ref, -2, 6, 14);
     emissores.push({ tipo: 'fogo', p: tTomb, taxa: 26, raio: 3 });
@@ -471,6 +477,7 @@
     for (k = 0; k < lugaresTorre.length; k++) {
       var pt = aoLado(Math.floor(N * lugaresTorre[k][0]), lugaresTorre[k][1], lugaresTorre[k][2]);
       var caida = k === 1;
+      if (k !== 1) colide(pt.x, pt.z, 3.6);
       torre(new Mont(pt.x, pt.y + (caida ? 2.5 : 0), pt.z, R() * 3, 0, caida ? 1.35 : 0), 22, [0.32, 0.25, 0.21]);
       if (!caida) new Mont(pt.x, pt.y, pt.z, 0).caixa(5, 1.2, 5, 0, 0.3, 0, [0.5, 0.45, 0.4]);
     }
@@ -484,6 +491,7 @@
       wm.caixa(2.1, 0.8, 4.3, 0, 0.4, 0, cb);
       wm.caixa(1.8, 0.6, 1.9, 0, 1.1, -0.3, [0.12, 0.1, 0.09]);
       if (R() < 0.6) wm.cil(0.5, 0.4, 1.15, 0, 1.4, [0.1, 0.1, 0.1], 0, 0, Math.PI / 2);
+      colide(pw.x, pw.z, 2.3);
       if (k < 3) {
         var pfw = pontoMundo(wm, 0, 1.3, 0.5);
         emissores.push({ tipo: 'fogo', p: pfw, taxa: 14, raio: 1 });
@@ -496,6 +504,7 @@
     for (i = 0; i < N; i += 32) {
       var pp = aoLado(i, -1, 13);
       var quebrado = (i / 32) % 7 === 5;
+      colide(pp.x, pp.z, 0.5);
       var pm2 = new Mont(pp.x, pp.y, pp.z, pp.rot, quebrado ? 0.5 : 0, 0);
       pm2.caixa(0.35, 10, 0.35, 0, 5, 0, [0.36, 0.27, 0.2]);
       pm2.caixa(3.2, 0.25, 0.25, 0, 9.3, 0, [0.33, 0.25, 0.19]);
@@ -561,8 +570,10 @@
     for (k = 0; k < 2; k++) {
       instanciar(geoPedra(11 + k, 0), matPedra, nP, function () {
         var pv = lugarVale(11, 75), s = 0.35 + Math.pow(R(), 3) * (R() < 0.15 ? 7 : 3.5);
+        var sx = s * (0.8 + R() * 0.6), sz = s * (0.8 + R() * 0.5);
+        if (s > 1.3) colide(pv.x, pv.z, Math.max(sx, sz) * 0.8);
         return { x: pv.x, y: pv.y + s * 0.15, z: pv.z, ry: R() * 6, rx: (R() - 0.5) * 0.5, rz: (R() - 0.5) * 0.5,
-          sx: s * (0.8 + R() * 0.6), sy: s * (0.5 + R() * 0.6), sz: s * (0.8 + R() * 0.5), cor: variar(PAL_ROCHA[Math.floor(R() * 7)], 0.25) };
+          sx: sx, sy: s * (0.5 + R() * 0.6), sz: sz, cor: variar(PAL_ROCHA[Math.floor(R() * 7)], 0.25) };
       });
     }
     var geoMoita = geoPedra(31, 1);
@@ -666,6 +677,10 @@
     return {
       altura: altura,
       perto: perto,
+      colisores: colisores,
+      // ponto da estrada mais perto: {i, d, x, z, y, h}
+      estradaPerto: function (x, z) { var d = perto(x, z), i = pertoIdx < 0 ? 0 : pertoIdx; return { i: i, d: d, x: px[i], z: pz[i], y: ph[i] + 0.3, h: Math.atan2(tx[i], tz[i]) }; },
+      aoLado: aoLado,
       estrada: { n: N, px: px, pz: pz, ph: ph, tx: tx, tz: tz, total: total, largura: LARG * 2 },
       sol: SOL,
       atualizar: atualizar,

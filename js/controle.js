@@ -1,0 +1,133 @@
+// Celular: entra na sala, escolhe o carro e vira volante + pedais.
+// Vários jogadores no mesmo navegador (para testar): controle.html?sala=X&j=2
+(function () {
+  function $(id) { return document.getElementById(id); }
+  function param(n, pad) { var m = new RegExp('[?&]' + n + '=([^&]*)').exec(location.search); return m ? decodeURIComponent(m[1]) : pad; }
+  var cod = (param('sala', '') || '').toUpperCase();
+  if (!cod) { cod = (prompt('Código da sala (está na TV):') || '').toUpperCase().trim(); }
+  $('salaCod').textContent = cod;
+
+  // identidade do jogador
+  var sufixo = param('j', '') ? '_' + param('j', '') : '';
+  var key = null;
+  try { key = localStorage.getItem('carros_key' + sufixo); } catch (e) {}
+  if (!key) { key = 'k' + Math.random().toString(36).slice(2, 10); try { localStorage.setItem('carros_key' + sufixo, key); } catch (e) {} }
+  var nomeSalvo = ''; try { nomeSalvo = localStorage.getItem('carros_nome' + sufixo) || ''; } catch (e) {}
+  $('nome').value = nomeSalvo;
+  var carro = 'buggy';
+  try { carro = localStorage.getItem('carros_carro' + sufixo) || 'buggy'; } catch (e) {}
+
+  var opcoes = document.querySelectorAll('.opcao');
+  function marcar() { for (var i = 0; i < opcoes.length; i++) opcoes[i].classList.toggle('sel', opcoes[i].getAttribute('data-carro') === carro); }
+  for (var i = 0; i < opcoes.length; i++) opcoes[i].onclick = function () { carro = this.getAttribute('data-carro'); marcar(); };
+  marcar();
+
+  // ---------------- rede
+  var lat = '', ultimoTv = null, canalTxt = 'conectando…';
+  function mostrarEstado() { $('estado').textContent = canalTxt + (lat ? ' · ' + lat : ''); }
+  var rede = new Rede.Celular(cod, key, {
+    estado: function (t) { canalTxt = t === 'conectado' ? '● direto' : t; mostrarEstado(); },
+    info: function (d) {
+      if (d.cor) { $('barraTopo').style.borderBottomColor = d.cor; $('eu').style.color = d.cor; }
+      if (d.tv && d.tv !== ultimoTv) { var antes = ultimoTv; ultimoTv = d.tv; if (antes && entrou) rede.conectar(); }
+    },
+    msg: function (m) {
+      if (m.vib && navigator.vibrate) navigator.vibrate(m.vib);
+      if (m.hud) { $('kmh').textContent = m.hud.v; $('nitroBar').style.width = m.hud.n + '%'; }
+    },
+    latencia: function (ms, canal) { lat = Math.round(ms) + ' ms' + (canal === 'Firebase' ? ' (internet)' : ''); mostrarEstado(); }
+  });
+
+  var entrou = false;
+  function telaCheia() {
+    var el = document.documentElement, f = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (f && !document.fullscreenElement && !document.webkitFullscreenElement) {
+      try {
+        var p = f.call(el);
+        if (p && p.then) p.then(function () { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape')['catch'](function () {}); })['catch'](function () {});
+      } catch (e) {}
+    }
+  }
+  $('btEntrar').onclick = function () {
+    var nome = $('nome').value.trim().slice(0, 12) || 'Piloto';
+    try { localStorage.setItem('carros_nome' + sufixo, nome); localStorage.setItem('carros_carro' + sufixo, carro); } catch (e) {}
+    telaCheia();
+    $('eu').textContent = nome;
+    $('telaEntrar').style.display = 'none';
+    $('telaJogo').classList.add('ativo');
+    entrou = true;
+    rede.entrar(nome, carro);
+  };
+  $('btTrocar').onclick = function () {
+    $('telaJogo').classList.remove('ativo');
+    $('telaEntrar').style.display = '';
+    $('btEntrar').textContent = 'VOLTAR AO JOGO';
+  };
+  $('btEstrada').onclick = function () { if (!rede.mandar({ reset: 1 })) FB.patch('salas/' + cod + '/c/' + key, { reset: Date.now() }); };
+  $('btTela').onclick = telaCheia;
+  window.addEventListener('pagehide', function () { /* mantém o jogador; sai só pelo botão da TV ou ao fechar a sala */ });
+
+  // ---------------- controles
+  var ctrl = { x: 0, a: 0, r: 0, n: 0 }, mudou = true;
+  function botao(id, campo) {
+    var el = $(id);
+    function liga(v) { if (ctrl[campo] !== v) { ctrl[campo] = v; mudou = true; enviar(true); } el.classList.toggle('on', !!v); }
+    el.addEventListener('touchstart', function (e) { e.preventDefault(); liga(1); if (campo === 'n' && navigator.vibrate) navigator.vibrate(20); });
+    el.addEventListener('touchend', function (e) { e.preventDefault(); liga(0); });
+    el.addEventListener('touchcancel', function () { liga(0); });
+    el.addEventListener('mousedown', function () { liga(1); });
+    el.addEventListener('mouseup', function () { liga(0); });
+    el.addEventListener('mouseleave', function () { liga(0); });
+  }
+  botao('btAcel', 'a'); botao('btRe', 'r'); botao('btNitro', 'n');
+
+  // direção flutuante: onde o dedo encosta vira o centro
+  var dir = $('direcao'), pino = $('dPino'), base = $('dBase'), toqueId = null, cx = 0, cy = 0, ALC = 75;
+  function posDir(px) {
+    var x = (px - cx) / ALC; x = Math.max(-1, Math.min(1, x));
+    if (Math.abs(x) < 0.06) x = 0;
+    x = Math.round(x * 20) / 20;
+    if (x !== ctrl.x) { ctrl.x = x; mudou = true; }
+    var r = dir.getBoundingClientRect();
+    pino.style.left = (cx - r.left + x * ALC) + 'px'; pino.style.top = (cy - r.top) + 'px';
+  }
+  function comecar(px, py) {
+    var r = dir.getBoundingClientRect(); cx = px; cy = py;
+    base.style.left = (cx - r.left) + 'px'; base.style.top = (cy - r.top) + 'px';
+    base.style.display = 'block'; pino.style.display = 'block';
+    posDir(px);
+  }
+  function soltar() { toqueId = null; ctrl.x = 0; mudou = true; pino.style.display = 'none'; base.style.display = 'none'; enviar(true); }
+  dir.addEventListener('touchstart', function (e) {
+    e.preventDefault();
+    var t = e.changedTouches[0]; toqueId = t.identifier; comecar(t.clientX, t.clientY);
+  });
+  dir.addEventListener('touchmove', function (e) {
+    e.preventDefault();
+    for (var i = 0; i < e.changedTouches.length; i++) if (e.changedTouches[i].identifier === toqueId) posDir(e.changedTouches[i].clientX);
+  });
+  dir.addEventListener('touchend', function (e) {
+    e.preventDefault();
+    for (var i = 0; i < e.changedTouches.length; i++) if (e.changedTouches[i].identifier === toqueId) soltar();
+  });
+  var arrastando = false;
+  dir.addEventListener('mousedown', function (e) { arrastando = true; comecar(e.clientX, e.clientY); });
+  window.addEventListener('mousemove', function (e) { if (arrastando) posDir(e.clientX); });
+  window.addEventListener('mouseup', function () { if (arrastando) { arrastando = false; soltar(); } });
+
+  // envio: 30x por segundo quando muda; mantém vivo a cada 150 ms (direto) ou 1 s (internet)
+  var ultimoEnvio = 0;
+  function enviar(forcar) {
+    if (!entrou) return;
+    var agora = Date.now(), vivo = rede.aberto() ? 150 : 1000;
+    if (!mudou && !forcar && agora - ultimoEnvio < vivo) return;
+    rede.controle(ctrl.x, ctrl.a, ctrl.r, ctrl.n, forcar);
+    mudou = false; ultimoEnvio = agora;
+  }
+  setInterval(function () { enviar(false); }, 33);
+
+  // teclado (testar no computador)
+  var mapa = { 37: ['x', -1], 39: ['x', 1], 38: ['a', 1], 40: ['r', 1], 16: ['n', 1] };
+  document.addEventListener('keydown', function (e) { var m = mapa[e.keyCode]; if (m && ctrl[m[0]] !== m[1]) { ctrl[m[0]] = m[1]; mudou = true; } });
+  document.addEventListener('keyup', function (e) { var m = mapa[e.keyCode]; if (m) { ctrl[m[0]] = 0; mudou = true; } });
+})();
