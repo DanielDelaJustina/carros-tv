@@ -33,7 +33,14 @@
     },
     msg: function (m) {
       if (m.vib && navigator.vibrate) navigator.vibrate(m.vib);
-      if (m.hud) { $('kmh').textContent = m.hud.v; $('nitroBar').style.width = m.hud.n + '%'; }
+      if (m.hud) {
+        $('kmh').textContent = m.hud.v;
+        var cg = m.hud.c || 0;
+        $('nitroBar').style.width = Math.round(cg / 3 * 100) + '%';
+        var bt = $('btNitro');
+        bt.className = 'bt' + (m.hud.b ? ' on' : cg < 1 ? ' vazio' : '');
+        $('nitroQtd').textContent = m.hud.b ? 'ATIVO!' : (Math.floor(cg) + ' de 3');
+      }
     },
     latencia: function (ms, canal) { lat = Math.round(ms) + ' ms' + (canal === 'Firebase' ? ' (internet)' : ''); mostrarEstado(); }
   });
@@ -79,7 +86,11 @@
     el.addEventListener('mouseup', function () { liga(0); });
     el.addEventListener('mouseleave', function () { liga(0); });
   }
-  botao('btAcel', 'a'); botao('btRe', 'r'); botao('btNitro', 'n');
+  botao('btAcel', 'a'); botao('btRe', 'r');
+  // nitro: um toque ativa (manda um contador de toques, que não se perde se um pacote sumir)
+  function tocarNitro(e) { if (e) e.preventDefault(); ctrl.n++; mudou = true; enviar(true); if (navigator.vibrate) navigator.vibrate(30); }
+  $('btNitro').addEventListener('touchstart', tocarNitro);
+  $('btNitro').addEventListener('mousedown', function () { tocarNitro(); });
 
   // direção flutuante: onde o dedo encosta vira o centro
   var dir = $('direcao'), pino = $('dPino'), base = $('dBase'), toqueId = null, cx = 0, cy = 0, ALC = 75;
@@ -127,7 +138,7 @@
   setInterval(function () { enviar(false); }, 33);
 
   // teclado (testar no computador)
-  var mapa = { 37: ['x', -1], 39: ['x', 1], 38: ['a', 1], 40: ['r', 1], 16: ['n', 1] };
-  document.addEventListener('keydown', function (e) { var m = mapa[e.keyCode]; if (m && ctrl[m[0]] !== m[1]) { ctrl[m[0]] = m[1]; mudou = true; } });
+  var mapa = { 37: ['x', -1], 39: ['x', 1], 38: ['a', 1], 40: ['r', 1] };
+  document.addEventListener('keydown', function (e) { if (e.keyCode === 16 && !e.repeat) tocarNitro(); var m = mapa[e.keyCode]; if (m && ctrl[m[0]] !== m[1]) { ctrl[m[0]] = m[1]; mudou = true; } });
   document.addEventListener('keyup', function (e) { var m = mapa[e.keyCode]; if (m) { ctrl[m[0]] = 0; mudou = true; } });
 })();

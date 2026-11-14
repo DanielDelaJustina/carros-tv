@@ -6,18 +6,50 @@
   var T;
 
   // ------------------------------------------------ materiais compartilhados
-  var MAT = null;
+  var MAT = null, CEU = null;
+  // reflexo: um "céu" pequeno em 6 lados (azul em cima, névoa quente no horizonte, areia embaixo)
+  function ceuReflexo() {
+    if (CEU) return CEU;
+    function lado(tipo) {
+      var c = document.createElement('canvas'); c.width = 64; c.height = 64;
+      var g = c.getContext('2d'), gr;
+      if (tipo === 'cima') { g.fillStyle = '#5f8cc4'; g.fillRect(0, 0, 64, 64); }
+      else if (tipo === 'baixo') { g.fillStyle = '#b98a5c'; g.fillRect(0, 0, 64, 64); }
+      else {
+        gr = g.createLinearGradient(0, 0, 0, 64);
+        gr.addColorStop(0, '#6f97c9'); gr.addColorStop(0.45, '#f0c896'); gr.addColorStop(0.52, '#c98a52'); gr.addColorStop(1, '#8a5c3a');
+        g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+        g.fillStyle = 'rgba(150,80,45,.7)'; // morros no horizonte
+        g.beginPath(); g.moveTo(0, 34); for (var x = 0; x <= 64; x += 8) g.lineTo(x, 26 + Math.random() * 8); g.lineTo(64, 40); g.lineTo(0, 40); g.fill();
+      }
+      return c;
+    }
+    CEU = new T.CubeTexture([lado('l'), lado('l'), lado('cima'), lado('baixo'), lado('l'), lado('l')]);
+    CEU.needsUpdate = true;
+    return CEU;
+  }
+  function phong(cor, brilho, reflexo, espec) {
+    return new T.MeshPhongMaterial({ color: cor, shininess: brilho, specular: espec === undefined ? 0x444444 : espec, envMap: ceuReflexo(), reflectivity: reflexo, combine: T.MixOperation });
+  }
+  // versão do material com cores por vértice (sombra embaixo + poeira), usada nas peças juntadas
+  var VC = {};
+  function comVertice(mat) {
+    if (VC[mat.uuid]) return VC[mat.uuid];
+    var m = mat.clone(); m.vertexColors = true; VC[mat.uuid] = m;
+    return m;
+  }
   function materiais() {
     if (MAT) return MAT;
     MAT = {
-      escuro: new T.MeshLambertMaterial({ color: 0x2a2826 }),
-      grafite: new T.MeshLambertMaterial({ color: 0x3d3b39 }),
-      metal: new T.MeshLambertMaterial({ color: 0x8d8a86 }),
-      cromo: new T.MeshLambertMaterial({ color: 0xc9c4bc, emissive: 0x222018 }),
-      pneu: new T.MeshLambertMaterial({ color: 0x1a1817 }),
-      vidro: new T.MeshLambertMaterial({ color: 0x1d2a33, emissive: 0x0a1218 }),
+      escuro: phong(0x2a2826, 18, 0.06, 0x222222),
+      grafite: phong(0x45423f, 30, 0.12, 0x333333),
+      metal: phong(0x9a968f, 50, 0.3, 0x666666),
+      cromo: phong(0xd8d4cc, 90, 0.7, 0xffffff),
+      pneu: new T.MeshLambertMaterial({ color: 0x1c1a19 }),
+      vidro: phong(0x18222b, 90, 0.55, 0xbbbbbb),
       farol: new T.MeshBasicMaterial({ color: 0xfff3d0 }),
-      ferrugem: new T.MeshLambertMaterial({ color: 0x6e4430 }),
+      ferrugem: phong(0x7a4a32, 10, 0.04, 0x221100),
+      chapa: phong(0x5d5852, 25, 0.15, 0x333333),
       chama: new T.MeshBasicMaterial({ color: 0x66aaff, transparent: true, opacity: 0.85, blending: T.AdditiveBlending, depthWrite: false }),
       chama2: new T.MeshBasicMaterial({ color: 0xffaa44, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false })
     };
@@ -64,10 +96,18 @@
       for (q = 0; q < lista.length; q++) tot += lista[q].attributes.position.count;
       var P = new Float32Array(tot * 3), o = 0;
       for (q = 0; q < lista.length; q++) { P.set(lista[q].attributes.position.array, o); o += lista[q].attributes.position.array.length; }
+      // cor por vértice: mais escuro e empoeirado perto do chão (dá peso e "sujeira de estrada")
+      var C = new Float32Array(P.length), b0 = this.base || 0;
+      for (var v = 0; v < P.length; v += 3) {
+        var y = P[v + 1] + b0, luz = 0.55 + 0.45 * Math.min(1, Math.max(0, (y - 0.25) / 1.2));
+        var po = Math.max(0, 1 - Math.max(0, (y - 0.3) / 0.8)) * 0.4;
+        C[v] = luz * (1 - po) + 0.78 * po; C[v + 1] = luz * (1 - po) + 0.62 * po; C[v + 2] = luz * (1 - po) + 0.46 * po;
+      }
       var g = new T.BufferGeometry();
       g.setAttribute('position', new T.BufferAttribute(P, 3));
+      g.setAttribute('color', new T.BufferAttribute(C, 3));
       g.computeVertexNormals();
-      grupo.add(new T.Mesh(g, this.mats[id]));
+      grupo.add(new T.Mesh(g, comVertice(this.mats[id])));
     }
   };
   function forma(pts) {
@@ -109,71 +149,134 @@
     return { pivo: pivo, gira: gira, frente: frente, r: r, lado: lado };
   }
 
+  // ------------------------------------------------ enfeites: número na porta, antena com bandeira, brilho dos faróis
+  var texBrilho = null;
+  function brilho() {
+    if (texBrilho) return texBrilho;
+    var c = document.createElement('canvas'); c.width = 64; c.height = 64;
+    var g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.2, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    texBrilho = new T.Texture(c); texBrilho.needsUpdate = true;
+    return texBrilho;
+  }
+  function luzes(g, lista, cor, opac, tam) {
+    var mat = new T.SpriteMaterial({ map: brilho(), color: cor, blending: T.AdditiveBlending, depthWrite: false, transparent: true, opacity: opac });
+    for (var i = 0; i < lista.length; i++) {
+      var s = new T.Sprite(mat); s.position.set(lista[i][0], lista[i][1], lista[i][2]); s.scale.set(tam, tam, 1); g.add(s);
+    }
+    return mat;
+  }
+  function cssCor(c) { return '#' + ('000000' + c.toString(16)).slice(-6); }
+  function decal(g, num, cor, x, y, z, tam) {
+    var c = document.createElement('canvas'); c.width = 128; c.height = 128;
+    var cx = c.getContext('2d');
+    cx.beginPath(); cx.arc(64, 64, 58, 0, 6.29); cx.fillStyle = '#f2ece2'; cx.fill();
+    cx.lineWidth = 10; cx.strokeStyle = cssCor(cor); cx.stroke();
+    cx.fillStyle = '#1b1612'; cx.font = 'bold 84px Arial, sans-serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText(String(num), 64, 70);
+    var tx = new T.Texture(c); tx.needsUpdate = true;
+    var mat = new T.MeshLambertMaterial({ map: tx, transparent: true, alphaTest: 0.3 });
+    for (var s = -1; s <= 1; s += 2) {
+      var p = new T.Mesh(new T.PlaneGeometry(tam, tam), mat);
+      p.position.set(x * s, y, z); p.rotation.y = s * Math.PI / 2; g.add(p);
+    }
+  }
+  function antena(g, mt, M, cor, x, y, z) {
+    mt.cil(M.escuro, 0.018, 1.6, x, y + 0.8, z, 0, 0, 0, 5);
+    var geo = new T.PlaneGeometry(0.62, 0.36, 8, 1); geo.translate(0.31, 0, 0);
+    var b = new T.Mesh(geo, new T.MeshLambertMaterial({ color: cor, side: T.DoubleSide }));
+    b.position.set(x, y + 1.42, z); b.rotation.y = Math.PI / 2; // tremula para trás
+    g.add(b);
+    return { mesh: b, base: new Float32Array(geo.attributes.position.array) };
+  }
+
   // ------------------------------------------------ BUGGY (gaiola + metralhadora giratória)
-  function buggy(cor) {
+  function buggy(cor, num) {
     var M = materiais(), g = new T.Group(), mt = new Montador();
-    var mCor = new T.MeshLambertMaterial({ color: cor });
+    var mCor = phong(cor, 70, 0.22, 0x777777);
     var mFreio = new T.MeshBasicMaterial({ color: 0x551010 });
+    var P = Math.PI, i;
     // banheira / assoalho
     mt.perfil(mCor, forma([[-1.75, 0.55], [-1.85, 1.05], [-0.9, 1.15], [0.7, 1.15], [1.75, 0.95], [2.05, 0.7], [1.6, 0.5]]), 1.7, 0.05, 0, 0, 0);
     mt.caixa(M.escuro, 1.9, 0.12, 3.6, 0, 0.5, 0);
+    // chapas de blindagem laterais com rebites
+    for (var s = -1; s <= 1; s += 2) {
+      mt.caixa(M.chapa, 0.05, 0.42, 1.5, s * 0.93, 0.82, -0.75);
+      for (i = 0; i < 5; i++) mt.cil(M.cromo, 0.035, 0.04, s * 0.96, 0.98, -1.35 + i * 0.3, 0, 0, P / 2, 6);
+      mt.caixa(M.escuro, 0.5, 0.45, 0.04, s * 1.22, 0.62, -1.98);              // para-barro
+      mt.caixa(M.ferrugem, 0.28, 0.42, 0.2, s * 0.62, 1.32, -1.8);             // galões
+    }
+    mt.caixa(M.chapa, 1.5, 0.07, 0.65, 0, 0.58, 2.02, -0.45);                    // protetor de cárter
+    mt.caixa(M.chapa, 1.25, 0.05, 0.75, 0, 1.08, 1.25, 0.19);                    // capô de chapa
     // motor traseiro exposto
     mt.caixa(M.grafite, 1.1, 0.55, 0.9, 0, 1.35, -1.25);
     mt.caixa(M.metal, 0.9, 0.12, 0.7, 0, 1.68, -1.25);
-    for (var i = 0; i < 4; i++) mt.cil(M.cromo, 0.07, 0.5, -0.36 + i * 0.24, 1.78, -1.25 + (i % 2) * 0.12, 0, 0, 0, 6);
+    for (i = 0; i < 4; i++) mt.cil(M.cromo, 0.07, 0.5, -0.36 + i * 0.24, 1.78, -1.25 + (i % 2) * 0.12, 0, 0, 0, 6);
     mt.tubo(M.cromo, 0.45, 1.3, -1.6, 0.6, 1.9, -2.0, 0.08); mt.tubo(M.cromo, -0.45, 1.3, -1.6, -0.6, 1.9, -2.0, 0.08);
-    // bancos
+    // bancos e volante
     mt.caixa(M.escuro, 0.55, 0.5, 0.55, 0.38, 1.35, -0.25, -0.2); mt.caixa(M.escuro, 0.55, 0.5, 0.55, -0.38, 1.35, -0.25, -0.2);
+    mt.cil(M.escuro, 0.18, 0.04, -0.38, 1.55, 0.35, -1.0, 0, 0, 10);
     // gaiola
     var cg = M.escuro, R = 0.075, xs = [-0.82, 0.82];
     for (i = 0; i < 2; i++) {
       var x = xs[i];
-      mt.tubo(cg, x, 1.1, 0.75, x * 0.85, 2.05, 0.15, R);      // coluna da frente
-      mt.tubo(cg, x, 1.1, -0.85, x * 0.85, 2.05, -0.65, R);    // coluna de trás
-      mt.tubo(cg, x * 0.85, 2.05, 0.15, x * 0.85, 2.05, -0.65, R); // teto lateral
-      mt.tubo(cg, x, 1.1, 0.75, x * 0.95, 0.85, 1.95, R);       // para a frente
-      mt.tubo(cg, x, 1.1, -0.85, x * 0.9, 1.15, -1.9, R);       // para trás
+      mt.tubo(cg, x, 1.1, 0.75, x * 0.85, 2.05, 0.15, R);
+      mt.tubo(cg, x, 1.1, -0.85, x * 0.85, 2.05, -0.65, R);
+      mt.tubo(cg, x * 0.85, 2.05, 0.15, x * 0.85, 2.05, -0.65, R);
+      mt.tubo(cg, x, 1.1, 0.75, x * 0.95, 0.85, 1.95, R);
+      mt.tubo(cg, x, 1.1, -0.85, x * 0.9, 1.15, -1.9, R);
       mt.tubo(cg, x * 0.85, 2.05, -0.65, x * 0.9, 1.15, -1.9, R);
     }
     mt.tubo(cg, -0.7, 2.05, 0.15, 0.7, 2.05, 0.15, R); mt.tubo(cg, -0.7, 2.05, -0.65, 0.7, 2.05, -0.65, R);
     mt.tubo(cg, -0.7, 2.05, 0.15, 0.7, 2.05, -0.65, R);
-    // para-choque de tubo e faróis
+    // barra de faróis no teto
+    for (i = 0; i < 4; i++) {
+      var fx = -0.54 + i * 0.36;
+      mt.cil(M.grafite, 0.11, 0.16, fx, 2.17, 0.2, P / 2, 0, 0, 8);
+      mt.cil(M.farol, 0.085, 0.02, fx, 2.17, 0.29, P / 2, 0, 0, 8);
+    }
+    // para-choque de tubo e faróis baixos
     mt.tubo(M.cromo, -0.95, 0.75, 2.1, 0.95, 0.75, 2.1, 0.09); mt.tubo(M.cromo, -0.6, 0.6, 2.15, -0.6, 1.0, 2.0, 0.07); mt.tubo(M.cromo, 0.6, 0.6, 2.15, 0.6, 1.0, 2.0, 0.07);
-    mt.cil(M.farol, 0.13, 0.08, -0.45, 2.12, 0.25, Math.PI / 2); mt.cil(M.farol, 0.13, 0.08, 0.45, 2.12, 0.25, Math.PI / 2);
-    mt.cil(M.cromo, 0.16, 0.06, -0.45, 2.1, 0.22, Math.PI / 2); mt.cil(M.cromo, 0.16, 0.06, 0.45, 2.1, 0.22, Math.PI / 2);
-    // estepe atrás
-    mt.add(geoPneu(0.45, 0.3, true), M.pneu, 0, 1.55, -2.05, 0, Math.PI / 2, 0);
-    // placa
+    mt.cil(M.cromo, 0.15, 0.1, -0.55, 0.95, 1.98, P / 2); mt.cil(M.cromo, 0.15, 0.1, 0.55, 0.95, 1.98, P / 2);
+    mt.cil(M.farol, 0.12, 0.02, -0.55, 0.95, 2.04, P / 2); mt.cil(M.farol, 0.12, 0.02, 0.55, 0.95, 2.04, P / 2);
+    // estepe atrás e placa
+    mt.add(geoPneu(0.45, 0.3, true), M.pneu, 0, 1.55, -2.05, 0, P / 2, 0);
     mt.caixa(M.cromo, 0.6, 0.22, 0.04, 0, 0.75, -1.92);
+    var band = antena(g, mt, M, cor, -0.8, 2.05, -0.65);
     mt.malhas(g);
+    decal(g, num, cor, 0.965, 0.82, -0.75, 0.42);
+    var luzFarol = luzes(g, [[-0.55, 0.95, 2.1], [0.55, 0.95, 2.1], [-0.54, 2.17, 0.33], [-0.18, 2.17, 0.33], [0.18, 2.17, 0.33], [0.54, 2.17, 0.33]], 0xfff1c8, 0.8, 0.75);
     // luzes de freio
     var f1 = new T.Mesh(BOX, mFreio); f1.scale.set(0.3, 0.12, 0.05); f1.position.set(-0.6, 1.02, -1.88); g.add(f1);
     var f2 = f1.clone(); f2.position.x = 0.6; g.add(f2);
+    var luzFreio = luzes(g, [[-0.6, 1.02, -1.95], [0.6, 1.02, -1.95]], 0xff2a10, 0.2, 0.8);
     // metralhadora giratória no teto
-    var arma = new T.Group(); arma.position.set(0, 2.18, -0.25); g.add(arma);
-    var am = new Montador();
+    var arma = new T.Group(); arma.position.set(0, 2.32, -0.3); g.add(arma);
+    var am = new Montador(); am.base = 2;
     am.caixa(M.grafite, 0.5, 0.3, 0.6, 0, 0, 0); am.caixa(M.ferrugem, 0.35, 0.28, 0.45, 0.42, 0, -0.1);
-    am.cil(M.grafite, 0.16, 0.4, 0, 0.05, 0.45, Math.PI / 2);
+    am.cil(M.grafite, 0.16, 0.4, 0, 0.05, 0.45, P / 2);
+    am.caixa(M.chapa, 0.7, 0.4, 0.05, 0, 0.12, 0.3, -0.15);               // escudo do atirador
+    am.cil(M.escuro, 0.05, 0.4, 0, -0.3, 0, 0, 0, 0, 6);
     am.malhas(arma);
     var canos = new T.Group(); canos.position.set(0, 0.05, 0.6); arma.add(canos);
-    var cm = new Montador();
-    for (i = 0; i < 6; i++) { var a = i / 6 * Math.PI * 2; cm.cil(M.escuro, 0.035, 1.1, Math.cos(a) * 0.09, Math.sin(a) * 0.09, 0.55, Math.PI / 2, 0, 0, 5); }
-    cm.cil(M.metal, 0.13, 0.08, 0, 0, 0.3, Math.PI / 2); cm.cil(M.metal, 0.13, 0.08, 0, 0, 1.0, Math.PI / 2);
+    var cm = new Montador(); cm.base = 2;
+    for (i = 0; i < 6; i++) { var a = i / 6 * P * 2; cm.cil(M.escuro, 0.035, 1.1, Math.cos(a) * 0.09, Math.sin(a) * 0.09, 0.55, P / 2, 0, 0, 5); }
+    cm.cil(M.metal, 0.13, 0.08, 0, 0, 0.3, P / 2); cm.cil(M.metal, 0.13, 0.08, 0, 0, 1.0, P / 2);
     cm.malhas(canos);
     var rodas = [
       roda(g, M, -1.2, 0.72, 1.35, 0.72, 0.56, true, true), roda(g, M, 1.2, 0.72, 1.35, 0.72, 0.56, true, true),
       roda(g, M, -1.22, 0.76, -1.3, 0.76, 0.62, true, false), roda(g, M, 1.22, 0.76, -1.3, 0.76, 0.62, true, false)
     ];
-    return finalizar(g, rodas, mFreio, [[0.6, 1.9, -2.05], [-0.6, 1.9, -2.05]], [0, 0.3, 1], arma, canos, 'buggy', mCor);
+    return finalizar(g, rodas, mFreio, [[0.6, 1.9, -2.05], [-0.6, 1.9, -2.05]], arma, canos, 'buggy', mCor, { bandeira: band, luzFreio: luzFreio, luzFarol: luzFarol });
   }
 
   // ------------------------------------------------ MUSCLE CAR (espinhos + lançador de foguetes)
-  function muscle(cor) {
+  function muscle(cor, num) {
     var M = materiais(), g = new T.Group(), mt = new Montador();
-    var mCor = new T.MeshLambertMaterial({ color: 0x2b2a2c });
-    var mFaixa = new T.MeshLambertMaterial({ color: cor });
+    var mCor = phong(0x1c1b1f, 90, 0.12, 0x999999);
+    var mFaixa = phong(cor, 70, 0.25, 0x777777);
     var mFreio = new T.MeshBasicMaterial({ color: 0x551010 });
-    var P = Math.PI;
+    var P = Math.PI, i, s;
     var corpo = forma([
       [-2.3, 0.32], [-2.38, 0.98], [-1.75, 1.1], [-0.6, 1.1], [0.9, 1.08], [2.2, 0.98], [2.42, 0.78], [2.38, 0.32],
       [1.97, 0.32], [1.45, 0.42, 0.52, 0, P], [-0.93, 0.32], [-1.45, 0.42, 0.52, 0, P], [-2.3, 0.32]
@@ -185,17 +288,27 @@
     // faixas na cor do jogador (capô, teto, porta-malas)
     mt.caixa(mFaixa, 0.28, 0.03, 1.5, -0.32, 1.13, 1.55, -0.08); mt.caixa(mFaixa, 0.28, 0.03, 1.5, 0.32, 1.13, 1.55, -0.08);
     mt.caixa(mFaixa, 0.28, 0.03, 1.0, -0.32, 1.69, -0.3); mt.caixa(mFaixa, 0.28, 0.03, 1.0, 0.32, 1.69, -0.3);
+    mt.caixa(mFaixa, 0.28, 0.03, 0.6, -0.32, 1.13, -1.95); mt.caixa(mFaixa, 0.28, 0.03, 0.6, 0.32, 1.13, -1.95);
     // compressor saindo do capô
     mt.caixa(M.cromo, 0.7, 0.3, 0.6, 0, 1.25, 1.2); mt.caixa(M.escuro, 0.8, 0.2, 0.45, 0, 1.5, 1.22);
-    for (var i = 0; i < 2; i++) mt.cil(M.cromo, 0.12, 0.25, -0.18 + i * 0.36, 1.68, 1.22, 0, 0, 0, 8);
+    for (i = 0; i < 2; i++) mt.cil(M.cromo, 0.12, 0.25, -0.18 + i * 0.36, 1.68, 1.22, 0, 0, 0, 8);
+    for (i = 0; i < 4; i++) mt.caixa(M.cromo, 0.03, 0.04, 0.5, -0.27 + i * 0.18, 1.63, 1.22);
+    // grade no para-brisa e chapas nas janelas laterais (blindagem)
+    for (i = 0; i < 5; i++) mt.tubo(M.escuro, -0.56 + i * 0.28, 1.12, 0.98, -0.5 + i * 0.25, 1.6, 0.3, 0.03, 5);
+    for (s = -1; s <= 1; s += 2) {
+      mt.caixa(M.chapa, 0.05, 0.38, 1.25, s * 0.83, 1.32, -0.32, 0, 0, -s * 0.2);
+      for (i = 0; i < 3; i++) mt.caixa(M.escuro, 0.06, 0.05, 1.0, s * 0.845, 1.22 + i * 0.1, -0.32, 0, 0, -s * 0.2);
+      mt.caixa(mCor, 0.2, 0.1, 0.12, s * 1.1, 1.18, 0.75); mt.caixa(M.cromo, 0.04, 0.12, 0.14, s * 1.2, 1.18, 0.75); // retrovisor
+    }
     // aerofólio
     mt.caixa(mFaixa, 1.9, 0.07, 0.4, 0, 1.38, -2.05); mt.caixa(M.escuro, 0.08, 0.3, 0.25, -0.75, 1.2, -2.05); mt.caixa(M.escuro, 0.08, 0.3, 0.25, 0.75, 1.2, -2.05);
-    // grade e para-choque com espinhos
+    // grade, para-choques e espinhos
     mt.caixa(M.escuro, 1.6, 0.3, 0.06, 0, 0.62, 2.43);
+    for (i = 0; i < 6; i++) mt.caixa(M.cromo, 0.03, 0.26, 0.04, -0.6 + i * 0.24, 0.62, 2.45);
     mt.caixa(M.metal, 2.1, 0.22, 0.25, 0, 0.42, 2.45);
+    mt.caixa(M.cromo, 2.0, 0.16, 0.18, 0, 0.42, -2.42);
     var cone = new T.ConeGeometry(1, 1, 6);
     for (i = 0; i < 5; i++) mt.add(cone, M.cromo, -0.8 + i * 0.4, 0.42, 2.72, P / 2, 0, 0, 0.07, 0.4, 0.07);
-    // espinhos nas laterais e no teto
     for (i = 0; i < 6; i++) {
       var zz = -1.6 + i * 0.6;
       mt.add(cone, M.cromo, 1.08, 0.75, zz, 0, 0, -P / 2, 0.06, 0.35, 0.06);
@@ -204,17 +317,23 @@
     for (i = 0; i < 3; i++) mt.add(cone, M.cromo, -0.5 + i * 0.5, 1.82, -0.75, -0.3, 0, 0, 0.05, 0.3, 0.05);
     // escapamentos laterais
     mt.cil(M.cromo, 0.09, 1.3, 1.08, 0.35, -0.2, P / 2, 0, 0, 8); mt.cil(M.cromo, 0.09, 1.3, -1.08, 0.35, -0.2, P / 2, 0, 0, 8);
-    // faróis
+    // faróis com grade de proteção
     mt.cil(M.farol, 0.12, 0.05, -0.68, 0.74, 2.42, P / 2); mt.cil(M.farol, 0.12, 0.05, 0.68, 0.74, 2.42, P / 2);
+    for (s = -1; s <= 1; s += 2) { mt.caixa(M.escuro, 0.32, 0.03, 0.04, s * 0.68, 0.79, 2.47); mt.caixa(M.escuro, 0.32, 0.03, 0.04, s * 0.68, 0.69, 2.47); }
+    var band = antena(g, mt, M, cor, -0.85, 1.1, -1.85);
     mt.malhas(g);
+    decal(g, num, cor, 1.085, 0.72, 0.1, 0.48);
+    var luzFarol = luzes(g, [[-0.68, 0.74, 2.5], [0.68, 0.74, 2.5]], 0xfff1c8, 0.85, 0.9);
     var f1 = new T.Mesh(BOX, mFreio); f1.scale.set(0.55, 0.14, 0.05); f1.position.set(-0.6, 0.85, -2.38); g.add(f1);
     var f2 = f1.clone(); f2.position.x = 0.6; g.add(f2);
+    var luzFreio = luzes(g, [[-0.6, 0.85, -2.45], [0.6, 0.85, -2.45]], 0xff2a10, 0.2, 0.9);
     // lançador de foguetes no teto
     var arma = new T.Group(); arma.position.set(0, 1.85, -0.2); g.add(arma);
-    var am = new Montador();
+    var am = new Montador(); am.base = 1.8;
     am.caixa(M.grafite, 0.35, 0.18, 0.5, 0, -0.05, 0);
     am.cil(M.grafite, 0.2, 1.7, 0, 0.22, 0.1, P / 2, 0, 0, 10);
     am.cil(M.escuro, 0.22, 0.12, 0, 0.22, -0.72, P / 2, 0, 0, 10);
+    am.cil(M.escuro, 0.22, 0.08, 0, 0.22, 0.4, P / 2, 0, 0, 10);
     am.add(cone, M.ferrugem, 0, 0.22, 1.1, P / 2, 0, 0, 0.2, 0.4, 0.2);
     am.caixa(mFaixa, 0.06, 0.12, 0.6, 0.2, 0.22, 0.2);
     am.malhas(arma);
@@ -222,12 +341,12 @@
       roda(g, M, -1.0, 0.46, 1.45, 0.46, 0.42, false, true, M.cromo), roda(g, M, 1.0, 0.46, 1.45, 0.46, 0.42, false, true, M.cromo),
       roda(g, M, -1.02, 0.5, -1.45, 0.5, 0.52, false, false, M.cromo), roda(g, M, 1.02, 0.5, -1.45, 0.5, 0.52, false, false, M.cromo)
     ];
-    return finalizar(g, rodas, mFreio, [[1.08, 0.35, -0.85], [-1.08, 0.35, -0.85]], [1, 0.0, 0], arma, null, 'muscle', mFaixa);
+    return finalizar(g, rodas, mFreio, [[1.08, 0.35, -0.85], [-1.08, 0.35, -0.85]], arma, null, 'muscle', mFaixa, { bandeira: band, luzFreio: luzFreio, luzFarol: luzFarol });
   }
 
   // chamas do nitro + sombra falsa
   var texSombra = null;
-  function finalizar(g, rodas, mFreio, escapes, dirChama, arma, canos, tipo, mCor) {
+  function finalizar(g, rodas, mFreio, escapes, arma, canos, tipo, mCor, extras) {
     var M = materiais(), chamas = [];
     var cone = new T.ConeGeometry(1, 1, 8); cone.translate(0, 0.5, 0); // base no escapamento, ponta para fora
     for (var i = 0; i < escapes.length; i++) {
@@ -252,7 +371,9 @@
     var raiz = new T.Group(); raiz.add(corpo);
     // rodas ficam fora do corpo inclinado
     for (i = 0; i < rodas.length; i++) raiz.add(rodas[i].pivo);
-    return { obj: raiz, corpo: corpo, rodas: rodas, freio: mFreio, chamas: chamas, arma: arma, canos: canos, sombra: sombra, tipo: tipo, matCor: mCor };
+    for (i = 0; i < rodas.length; i++) { rodas[i].baseY = rodas[i].pivo.position.y; rodas[i].lx = rodas[i].pivo.position.x; rodas[i].lz = rodas[i].pivo.position.z; }
+    return { obj: raiz, corpo: corpo, rodas: rodas, freio: mFreio, chamas: chamas, arma: arma, canos: canos, sombra: sombra, tipo: tipo, matCor: mCor,
+      bandeira: extras.bandeira, luzFreio: extras.luzFreio, luzFarol: extras.luzFarol };
   }
 
   // ================================================================ FÍSICA (arcade)
@@ -266,8 +387,16 @@
     this.p = PARAM[modelo.tipo];
     this.x = 0; this.z = 0; this.y = 0; this.h = 0;
     this.v = 0; this.vl = 0; this.dir = 0; this.nitro = 1; this.usandoNitro = false;
+    this.cargas = NITRO_MAX; this.tempoNitro = 0;
     this.pitch = 0; this.roll = 0; this.giroRoda = 0; this.batida = 0; this.derrapando = 0;
   }
+  var NITRO_MAX = 3, NITRO_SEG = 3, NITRO_RECARGA = 9; // 3 cargas, 3 s cada, 1 carga volta a cada 9 s
+  // um toque no nitro: devolve true se ativou
+  Veiculo.prototype.acionarNitro = function () {
+    if (this.tempoNitro > 0 || this.cargas < 1) return false;
+    this.cargas -= 1; this.tempoNitro = NITRO_SEG;
+    return true;
+  };
   Veiculo.prototype.colocar = function (x, z, h) {
     this.x = x; this.z = z; this.h = h; this.v = 0; this.vl = 0;
     this.y = this.mundo.altura(x, z);
@@ -279,14 +408,15 @@
     var naEstrada = ep.d < 7.5;
     var sup = naEstrada ? 1 : p.foraEstrada;
 
-    // nitro
-    this.usandoNitro = !!(e.n && this.nitro > 0.02 && e.a); // three.js exige booleano em .visible
-    if (this.usandoNitro) this.nitro = Math.max(0, this.nitro - dt * 0.33);
-    else this.nitro = Math.min(1, this.nitro + dt * 0.07);
+    // nitro: cada toque gasta 1 carga e dura NITRO_SEG segundos, acelerando sozinho
+    if (this.tempoNitro > 0) this.tempoNitro -= dt;
+    this.usandoNitro = this.tempoNitro > 0 && !e.r; // booleano de verdade (three.js usa visible === false)
+    if (!this.usandoNitro) this.cargas = Math.min(NITRO_MAX, this.cargas + dt / NITRO_RECARGA);
+    this.nitro = this.cargas / NITRO_MAX;
     var vmax = p.vmax * sup * (this.usandoNitro ? 1.45 : 1);
 
     // aceleração, freio e ré
-    if (e.a && !e.r) {
+    if ((e.a || this.usandoNitro) && !e.r) {
       var ac = p.acel * (this.usandoNitro ? 1.9 : 1);
       if (this.v < vmax) this.v += ac * dt * Math.max(0.15, 1 - this.v / vmax);
       else this.v += (vmax - this.v) * dt * 1.5;
@@ -366,6 +496,7 @@
     if (yAlvo > this.y) this.y += (yAlvo - this.y) * Math.min(1, dt * 18); else this.y += (yAlvo - this.y) * Math.min(1, dt * 7);
     this.pitch += (Math.atan2(hb - hf, 3.2) - this.pitch) * Math.min(1, dt * 10);
     this.roll += (Math.atan2(hl - hr, 2.2) - this.roll) * Math.min(1, dt * 10);
+    this.naEstrada = naEstrada && ep.d < 7; this.yEstrada = ep.y;
     this.batida = batida;
     return batida;
   };
@@ -378,11 +509,23 @@
     var bal = Math.sin(t * 17 + this.x) * 0.01 * Math.min(1, Math.abs(this.v) / 20);
     m.corpo.rotation.set(this.pitch - (freando ? -0.04 : 0) - (this.usandoNitro ? 0.05 : 0), 0, this.roll + this.dir * Math.min(1, Math.abs(this.v) / 25) * 0.06 + bal);
     this.giroRoda += this.v * dt;
+    var ch = Math.cos(this.h), sh = Math.sin(this.h), k = Math.min(1, dt * 20);
     for (var i = 0; i < m.rodas.length; i++) {
       var r = m.rodas[i];
       r.gira.rotation.x = this.giroRoda / r.r;
       if (r.frente) r.pivo.rotation.y = -this.dir * 0.45;
+      // cada roda acompanha o chão embaixo dela
+      var wx = this.x + r.lx * ch + r.lz * sh, wz = this.z - r.lx * sh + r.lz * ch, chao = this.mundo.altura(wx, wz);
+      if (this.naEstrada) chao = Math.max(chao, this.yEstrada);
+      var off = Math.max(-0.3, Math.min(0.35, chao + r.r - this.y - r.baseY));
+      r.pivo.position.y += (r.baseY + off - r.pivo.position.y) * k;
     }
+    if (m.bandeira) { // bandeira tremulando
+      var bp = m.bandeira.mesh.geometry.attributes.position, bb = m.bandeira.base, vel = Math.min(1, Math.abs(this.v) / 20) * 0.6 + 0.15;
+      for (var q = 0; q < bp.count; q++) { var bx = bb[q * 3]; bp.array[q * 3 + 2] = Math.sin(t * 9 - bx * 7) * bx * vel * 0.35; }
+      bp.needsUpdate = true;
+    }
+    if (m.luzFreio) m.luzFreio.opacity = freando ? 0.95 : 0.2;
     m.freio.color.setHex(freando ? 0xff2a1a : 0x551010);
     for (i = 0; i < m.chamas.length; i++) {
       m.chamas[i].visible = this.usandoNitro;
@@ -397,7 +540,7 @@
       T = THREE; BOX = new T.BoxGeometry(1, 1, 1); tmpO = new T.Object3D();
       vA = new T.Vector3(); vB = new T.Vector3(); qT = new T.Quaternion(); UP = new T.Vector3(0, 1, 0);
     },
-    modelo: function (tipo, cor) { return tipo === 'muscle' ? muscle(cor) : buggy(cor); },
+    modelo: function (tipo, cor, num) { return tipo === 'muscle' ? muscle(cor, num || 1) : buggy(cor, num || 1); },
     Veiculo: Veiculo,
     PARAM: PARAM
   };

@@ -124,7 +124,7 @@
     var slot = slotLivre();
     if (slot < 0) { aviso('Sala cheia: ' + info.nome + ' não entrou'); return null; }
     var tipo = info.carro === 'muscle' ? 'muscle' : 'buggy';
-    var m = Carros.modelo(tipo, CORES[slot]);
+    var m = Carros.modelo(tipo, CORES[slot], slot + 1);
     cena.add(m.obj); cena.add(m.sombra);
     var ve = new Carros.Veiculo(mundo, m);
     var p = lugarPerto(slot);
@@ -186,6 +186,7 @@
     removerJogador(key);
     var n = criarJogador(key, info); if (n) n.ve.colocar(x, z, h);
   }
+  function nitro(j) { if (j.ve.acionarNitro()) Som.nitro(); }
   function voltarEstrada(j) {
     var ep = mundo.estradaPerto(j.ve.x, j.ve.z);
     var h = ep.h + (Math.cos(j.ve.h - ep.h) >= 0 ? 0 : Math.PI);
@@ -205,7 +206,13 @@
       entrou: function (key, info) { criarJogador(key, info); },
       mudou: function (key, info) { trocarCarro(key, info); },
       saiu: function (key) { removerJogador(key); },
-      ctrl: function (key, c) { var j = jogadores[key]; if (!j) return; j.ent.x = c[0]; j.ent.a = c[1]; j.ent.r = c[2]; j.ent.n = c[3]; j.ultimoCtrl = Date.now(); },
+      ctrl: function (key, c) {
+        var j = jogadores[key]; if (!j) return;
+        j.ent.x = c[0]; j.ent.a = c[1]; j.ent.r = c[2]; j.ultimoCtrl = Date.now();
+        // c[3] = quantos toques no nitro o celular já deu (contador não se perde se um pacote sumir)
+        if (j.nitroCont === undefined || c[3] < j.nitroCont) j.nitroCont = c[3];
+        else if (c[3] > j.nitroCont) { j.nitroCont = c[3]; nitro(j); }
+      },
       reset: function (key) { var j = jogadores[key]; if (j) voltarEstrada(j); },
       canal: function (key, nome) { var j = jogadores[key]; if (j) { j.canal = nome; j.ui.sinal.className = 'sinal' + (nome === 'WebRTC' ? '' : ' fb'); } }
     });
@@ -216,12 +223,14 @@
   document.addEventListener('keydown', function (e) {
     teclas[e.keyCode] = true;
     if (TECLADO && e.keyCode === 82 && jogadores.teclado) voltarEstrada(jogadores.teclado);
+    if (TECLADO && e.keyCode === 16 && !e.repeat && jogadores.teclado) nitro(jogadores.teclado);
     if (TECLADO && [37, 38, 39, 40, 32].indexOf(e.keyCode) >= 0) e.preventDefault();
   });
   document.addEventListener('keyup', function (e) { teclas[e.keyCode] = false; });
 
   // ---------------- câmera compartilhada
   var posCam = new T.Vector3(), olhar = new T.Vector3(), alvoCam = new T.Vector3(), primeiro = true, passeio = 0;
+  var lkV = false;
   function camerar(dt) {
     var lista = [], k;
     for (k in jogadores) lista.push(jogadores[k]);
@@ -256,10 +265,13 @@
         }
       }
     }
-    if (VITRINE && lista.length) { passeio += dt * 0.35; cx = mx + Math.cos(passeio) * 15; cz = mz + Math.sin(passeio) * 15; cy = my + 3.5; ox = mx; oy = my + 0.9; oz = mz; }
+    if (VITRINE && lista.length) { // gira em volta de um carro de cada vez
+      passeio += dt * 0.5; var vc = lista[Math.floor(passeio / 6.283) % lista.length].ve;
+      cx = vc.x + Math.cos(passeio) * 7; cz = vc.z + Math.sin(passeio) * 7; cy = vc.y + 2.4; ox = vc.x; oy = vc.y + 0.9; oz = vc.z; lkV = true;
+    }
     cy = Math.max(cy, mundo.altura(cx, cz) + 1.5);
     alvoCam.set(cx, cy, cz);
-    var lk = 1 - Math.exp(-dt * 3.5);
+    var lk = lkV ? 1 : 1 - Math.exp(-dt * 3.5);
     if (primeiro) { posCam.copy(alvoCam); olhar.set(ox, oy, oz); primeiro = false; }
     else { posCam.lerp(alvoCam, lk); olhar.x += (ox - olhar.x) * lk * 1.4; olhar.y += (oy - olhar.y) * lk * 1.4; olhar.z += (oz - olhar.z) * lk * 1.4; }
     camera.position.copy(posCam);
@@ -274,11 +286,9 @@
     for (k in jogadores) {
       j = jogadores[k];
       if (k === 'teclado') {
-        j.ent.x = teclas[37] ? -1 : teclas[39] ? 1 : 0; j.ent.a = teclas[38] ? 1 : 0; j.ent.r = teclas[40] ? 1 : 0; j.ent.n = teclas[16] ? 1 : 0;
+        j.ent.x = teclas[37] ? -1 : teclas[39] ? 1 : 0; j.ent.a = teclas[38] ? 1 : 0; j.ent.r = teclas[40] ? 1 : 0;
       } else if (Date.now() - j.ultimoCtrl > 2500 && j.canal === 'Firebase' && j.ent.a) { j.ent.a = 0; } // controle sumiu: solta o acelerador
-      var nitroAntes = j.ve.usandoNitro;
       var bat = j.ve.atualizar(dt, j.ent, lista);
-      if (j.ve.usandoNitro && !nitroAntes) Som.nitro();
       if (bat > 7) { Som.pancada(bat); if (rede) rede.enviar(k, { vib: Math.min(200, Math.round(bat * 8)) }); }
       j.ve.desenhar(dt, t, j.ent.r && j.ve.v > 0.5 || (j.ent.r && !j.ent.a));
       // poeira das rodas de trás
@@ -312,7 +322,8 @@
         j.ui.arco.setAttribute('stroke-dasharray', (fr * 200) + ' 400');
         j.ui.ponteiro.setAttribute('transform', 'rotate(' + (-135 + fr * 270) + ' 50 50)');
         j.ui.nitro.style.width = Math.round(j.ve.nitro * 100) + '%';
-        if (rede && k !== 'teclado' && Math.floor(t * 4) !== j.ultimoEnvio) { j.ultimoEnvio = Math.floor(t * 4); rede.enviar(k, { hud: { v: kmh, n: Math.round(j.ve.nitro * 100) } }); }
+        j.ui.nitro.parentNode.className = 'barra' + (j.ve.usandoNitro ? ' ativo' : '');
+        if (rede && k !== 'teclado' && Math.floor(t * 4) !== j.ultimoEnvio) { j.ultimoEnvio = Math.floor(t * 4); rede.enviar(k, { hud: { v: kmh, c: Math.round(j.ve.cargas * 100) / 100, b: j.ve.usandoNitro ? 1 : 0 } }); }
       }
     }
   }

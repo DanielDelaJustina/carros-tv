@@ -45,8 +45,10 @@ body { background: #1b130d; color: #fff; font-family: "Rajdhani", "Segoe UI", Ar
 .cartao svg { width: 10vh; height: 10vh; flex: none; margin-right: .8vw; }
 .cartao .nome { font-size: 2.8vh; font-weight: 700; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cartao .tipo { font-size: 1.7vh; color: #b8a690; letter-spacing: 1px; margin-bottom: .6vh; }
-.cartao .barra { height: 1.3vh; background: #2a1d14; border-radius: 1vh; overflow: hidden; margin-top: .3vh; }
+.cartao .barra { position: relative; height: 1.3vh; background: #2a1d14; border-radius: 1vh; overflow: hidden; margin-top: .3vh; }
 .cartao .barra i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #2f7dff, #6fd0ff); }
+.cartao .barra:after { content: ""; position: absolute; top: 0; bottom: 0; left: 33.3%; width: 33.3%; border-left: .3vh solid #120d0a; border-right: .3vh solid #120d0a; box-sizing: border-box; }
+.cartao .barra.ativo i { background: linear-gradient(90deg, #6fd0ff, #fff); box-shadow: 0 0 1vh #6fd0ff; }
 .cartao .rot { font-size: 1.6vh; color: #9fc8ff; font-weight: 700; letter-spacing: 1px; display: flex; justify-content: space-between; }
 .cartao .sinal { color: #7ee08a; } .cartao .sinal.fb { color: #ffc83a; }
 
@@ -91,12 +93,15 @@ body.cel { overflow: hidden; -webkit-user-select: none; user-select: none; touch
 .cel .barraTopo button { font-family: inherit; font-size: 14px; background: #3a2a1e; color: #fff; border: 0; border-radius: 6px; padding: 6px 10px; margin-left: 6px; }
 .cel .vel { position: absolute; top: 52px; left: 50%; transform: translateX(-50%); text-align: center; color: #e8d8c4; }
 .cel .vel b { font-size: 34px; color: #fff; }
-.cel .vel .nb { width: 140px; height: 8px; background: #2a1d14; border-radius: 4px; overflow: hidden; margin: 2px auto 0; }
+.cel .vel .nb { position: relative; width: 140px; height: 8px; background: #2a1d14; border-radius: 4px; overflow: hidden; margin: 2px auto 0; }
+.cel .vel .nb:after { content: ""; position: absolute; top: 0; bottom: 0; left: 33.3%; width: 33.3%; border-left: 3px solid #120d0a; border-right: 3px solid #120d0a; box-sizing: border-box; }
 .cel .vel .nb i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #2f7dff, #6fd0ff); }
 /* botões: ação à esquerda/em cima, direção à direita/embaixo */
 .cel .bt { position: absolute; border: 0; border-radius: 18px; color: #fff; font-family: inherit; font-weight: 700; font-size: 20px; }
 #btNitro { left: 12px; top: 56px; width: 30%; height: 22%; background: #1f4f9a; }
-#btNitro.on { background: #4aa0ff; }
+#btNitro.on { background: #4aa0ff; box-shadow: 0 0 18px #6fd0ff; }
+#btNitro.vazio { background: #2a2f3a; color: #7a8090; }
+#btNitro small { display: block; font-size: 13px; font-weight: 500; opacity: .85; }
 #btAcel { left: 12px; top: calc(56px + 22% + 10px); width: 30%; bottom: calc(18% + 22px); background: #b8352b; font-size: 24px; }
 #btAcel.on { background: #ff5a48; }
 #btRe { left: 12px; bottom: 12px; width: 30%; height: 18%; background: #4a3a2e; }
