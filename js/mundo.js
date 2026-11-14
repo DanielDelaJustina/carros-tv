@@ -534,7 +534,7 @@
     luzSol.position.set(SOL.x * 100, SOL.y * 100, SOL.z * 100);
     cena.add(luzHemi); cena.add(luzSol);
 
-    var cTmp = new T.Color();
+    var cTmp = new T.Color(), densos = [];
     function instanciar(geo, mat, n, colocar) {
       var im = new T.InstancedMesh(geo, mat, n);
       im.frustumCulled = false;
@@ -577,11 +577,11 @@
       });
     }
     var geoMoita = geoPedra(31, 1);
-    instanciar(geoMoita, new T.MeshLambertMaterial({ color: 0xffffff }), Q ? 420 : 220, function () {
+    densos.push(instanciar(geoMoita, new T.MeshLambertMaterial({ color: 0xffffff }), Q ? 420 : 220, function () {
       var pv = lugarVale(11, 60), s = 0.5 + R() * 0.9;
       var cores = [[0.48, 0.44, 0.26], [0.55, 0.47, 0.3], [0.42, 0.36, 0.24], [0.6, 0.52, 0.34]];
       return { x: pv.x, y: pv.y + s * 0.2, z: pv.z, ry: R() * 6, sx: s * (1 + R() * 0.6), sy: s * (0.5 + R() * 0.4), sz: s * (1 + R() * 0.6), cor: variar(cores[Math.floor(R() * 4)], 0.2) };
-    });
+    }));
     // capim seco: 3 planos cruzados com textura recortada
     var texCapim = textura(T, 64, 64, function (g, w, h) {
       var rr4 = rng(9);
@@ -601,10 +601,11 @@
     gCap.setAttribute('position', new T.BufferAttribute(new Float32Array(cp), 3));
     gCap.setAttribute('uv', new T.BufferAttribute(new Float32Array(cu), 2));
     gCap.setAttribute('normal', new T.BufferAttribute(new Float32Array(cn), 3));
-    instanciar(gCap, new T.MeshLambertMaterial({ map: texCapim, alphaTest: 0.5, side: T.DoubleSide }), Q ? 1100 : 500, function () {
+    densos.push(instanciar(gCap, new T.MeshLambertMaterial({ map: texCapim, alphaTest: 0.5, side: T.DoubleSide }), Q ? 1100 : 500, function () {
       var pv = lugarVale(10, 55), s = 0.7 + R() * 0.9;
       return { x: pv.x, y: pv.y - 0.1, z: pv.z, ry: R() * 6, sx: s, sy: s * (0.7 + R() * 0.6), sz: s, cor: variar([1, 1, 1], 0.3) };
-    });
+    }));
+    for (k = 0; k < densos.length; k++) densos[k].total = densos[k].count;
 
     // ------------------------------------------------ partículas
     var texFumaca = textura(T, 64, 64, function (g, w, h) {
@@ -652,15 +653,17 @@
           }
         }
       }
-      // poeira no ar perto da câmera
-      if (camera) {
+      // poeira no ar perto da(s) câmera(s)
+      var cams = !camera ? [] : camera.length !== undefined ? camera : [camera];
+      if (cams.length) {
         poeira.acc = (poeira.acc || 0) + dt * 22;
         while (poeira.acc >= 1) {
           poeira.acc -= 1;
-          var a = R() * 6.28, r = 16 + R() * 45, x = camera.position.x + Math.cos(a) * r, z = camera.position.z + Math.sin(a) * r;
+          var cm = cams[Math.floor(R() * cams.length)];
+          var a = R() * 6.28, r = 16 + R() * 45, x = cm.position.x + Math.cos(a) * r, z = cm.position.z + Math.sin(a) * r;
           poeira.emitir(x, altura(x, z) + R() * 1.5, z, 3 + R() * 2, 0.3 + R() * 0.6, 1 + R(), 3 + R() * 2, 1.5, 5, 0.1, 0.92, 0.78, 0.6);
         }
-        ceu.position.copy(camera.position);
+        ceu.position.copy(cams[0].position);
       }
       fumaca.atualizar(dt, vento); fogo.atualizar(dt, { x: 0, z: 0 }); poeira.atualizar(dt, vento);
     }
@@ -685,6 +688,10 @@
       sol: SOL,
       atualizar: atualizar,
       escalaParticulas: escalaParticulas,
+      // céu acompanha a câmera que vai desenhar agora
+      verCamera: function (cam) { ceu.position.copy(cam.position); },
+      // fração de capim e moitas desenhados (1 = tudo)
+      densidade: function (f) { for (var q = 0; q < densos.length; q++) densos[q].count = Math.max(1, Math.floor(densos[q].total * f)); },
       poeiraCarro: poeiraCarro,
       msMontagem: Date.now() - t0
     };

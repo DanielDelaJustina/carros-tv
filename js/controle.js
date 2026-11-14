@@ -29,6 +29,7 @@
     estado: function (t) { canalTxt = t === 'conectado' ? '● direto' : t; mostrarEstado(); },
     info: function (d) {
       if (d.cor) { $('barraTopo').style.borderBottomColor = d.cor; $('eu').style.color = d.cor; }
+      if (d.cheia && entrou && d.cheia !== ultimaCheia) { ultimaCheia = d.cheia; sair('A sala está cheia (máximo 2). Tente de novo quando alguém sair.'); return; }
       if (d.tv && d.tv !== ultimoTv) { var antes = ultimoTv; ultimoTv = d.tv; if (antes && entrou) rede.conectar(); }
     },
     msg: function (m) {
@@ -45,7 +46,16 @@
     latencia: function (ms, canal) { lat = Math.round(ms) + ' ms' + (canal === 'Firebase' ? ' (internet)' : ''); mostrarEstado(); }
   });
 
-  var entrou = false;
+  var entrou = false, ultimaCheia = null;
+  // sair: tira o carro da TV e libera a vaga
+  function sair(msg) {
+    entrou = false;
+    rede.sair();
+    $('telaJogo').classList.remove('ativo');
+    $('telaEntrar').style.display = '';
+    $('btEntrar').textContent = 'ENTRAR';
+    $('salaCod').textContent = cod + (msg ? ' · ' + msg : ' · você saiu');
+  }
   function telaCheia() {
     var el = document.documentElement, f = el.requestFullscreen || el.webkitRequestFullscreen;
     if (f && !document.fullscreenElement && !document.webkitFullscreenElement) {
@@ -63,6 +73,7 @@
     $('telaEntrar').style.display = 'none';
     $('telaJogo').classList.add('ativo');
     entrou = true;
+    $('salaCod').textContent = cod;
     rede.entrar(nome, carro);
   };
   $('btTrocar').onclick = function () {
@@ -72,6 +83,7 @@
   };
   $('btEstrada').onclick = function () { if (!rede.mandar({ reset: 1 })) FB.patch('salas/' + cod + '/c/' + key, { reset: Date.now() }); };
   $('btTela').onclick = telaCheia;
+  $('btSair').onclick = function () { if (confirm('Sair do jogo e liberar a vaga?')) sair(); };
   window.addEventListener('pagehide', function () { /* mantém o jogador; sai só pelo botão da TV ou ao fechar a sala */ });
 
   // ---------------- controles

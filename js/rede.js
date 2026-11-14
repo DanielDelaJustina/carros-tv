@@ -162,7 +162,12 @@
     var self = this; this.emVoo = true;
     FB.patch(this.base + '/c/' + this.key, { ctrl: c }).then(function () { self.emVoo = false; }, function () { self.emVoo = false; });
   };
-  Celular.prototype.sair = function () { FB.del(this.base + '/c/' + this.key)['catch'](function () {}); };
+  Celular.prototype.sair = function () {
+    this.entrou = false;
+    if (this.pc) { try { this.pc.close(); } catch (e) {} }
+    this.pc = null; this.dc = null; this.quer = null;
+    return FB.del(this.base + '/c/' + this.key)['catch'](function () {});
+  };
 
   window.Rede = { TV: TV, Celular: Celular, novoCodigo: novoCodigo };
 })();

@@ -14,7 +14,7 @@
   var RES = parseInt(param('r', '720'), 10), Q = parseInt(param('q', '1'), 10), TECLADO = param('teclado', '') === '1', VITRINE = param('vitrine', '') === '1';
   var CORES = [0x3aa0ff, 0x46d17a, 0xffc83a, 0xc47aff], CORES_CSS = ['#3aa0ff', '#46d17a', '#ffc83a', '#c47aff'];
   var NOMES_CARRO = { buggy: 'BUGGY', muscle: 'MUSCLE' };
-  var MAX = 4;
+  var MAX = 2;
   var SESSAO = 's' + Date.now(); // se a TV recarregar, os celulares refazem a conexão direta
 
   // ---------------- sala (o código fica guardado para a TV voltar na mesma sala)
@@ -122,18 +122,18 @@
   }
   function criarJogador(key, info) {
     var slot = slotLivre();
-    if (slot < 0) { aviso('Sala cheia: ' + info.nome + ' não entrou'); return null; }
+    if (slot < 0) { aviso('Sala cheia: ' + info.nome + ' não entrou'); if (rede) rede.publicarJogador(key, { cheia: Date.now() }); return null; }
     var tipo = info.carro === 'muscle' ? 'muscle' : 'buggy';
     var m = Carros.modelo(tipo, CORES[slot], slot + 1);
     cena.add(m.obj); cena.add(m.sombra);
     var ve = new Carros.Veiculo(mundo, m);
     var p = lugarPerto(slot);
     ve.colocar(p.x, p.z, p.h);
-    var j = { key: key, slot: slot, info: info, m: m, ve: ve, ent: { x: 0, a: 0, r: 0, n: 0 }, canal: 'Firebase', ultimoCtrl: Date.now() };
+    var j = { key: key, slot: slot, info: info, m: m, ve: ve, ent: { x: 0, a: 0, r: 0, n: 0 }, canal: 'Firebase', ultimoCtrl: Date.now(), cam: novaCam() };
     // etiqueta e cartão
     j.etq = document.createElement('div'); j.etq.className = 'etiqueta'; j.etq.style.color = CORES_CSS[slot];
     $('etiquetas').appendChild(j.etq);
-    j.cartao = document.createElement('div'); j.cartao.className = 'cartao'; j.cartao.style.borderTopColor = CORES_CSS[slot];
+    j.cartao = document.createElement('div'); j.cartao.className = 'cartao s' + slot; j.cartao.style.borderTopColor = CORES_CSS[slot];
     j.cartao.innerHTML = '<svg viewBox="0 0 100 100"><path d="M18 78 A40 40 0 1 1 82 78" fill="none" stroke="#2a1d14" stroke-width="9" stroke-linecap="round"/>' +
       '<path class="arco" d="M18 78 A40 40 0 1 1 82 78" fill="none" stroke="' + CORES_CSS[slot] + '" stroke-width="9" stroke-linecap="round" stroke-dasharray="0 400"/>' +
       '<line class="ponteiro" x1="50" y1="50" x2="50" y2="18" stroke="#ff5a48" stroke-width="4" stroke-linecap="round"/>' +
@@ -196,7 +196,7 @@
     var n = 0; for (var k in jogadores) n++;
     $('qtd').textContent = n + '/' + MAX + ' JOGADORES';
     $('lobby').classList.toggle('escondido', n > 0);
-    $('mini').classList.toggle('escondido', n === 0);
+    $('mini').classList.toggle('escondido', n === 0 || n >= MAX);
   }
 
   // ---------------- rede
@@ -228,58 +228,79 @@
   });
   document.addEventListener('keyup', function (e) { teclas[e.keyCode] = false; });
 
-  // ---------------- câmera compartilhada
-  var posCam = new T.Vector3(), olhar = new T.Vector3(), alvoCam = new T.Vector3(), primeiro = true, passeio = 0;
-  var lkV = false;
-  function camerar(dt) {
-    var lista = [], k;
-    for (k in jogadores) lista.push(jogadores[k]);
-    var cx, cy, cz, ox, oy, oz;
+  // ---------------- câmeras: tela cheia com 1 jogador, tela dividida (cima/baixo) com 2
+  var passeio = 0, camPasseio = { cam: camera, pos: new T.Vector3(), olhar: new T.Vector3(), primeiro: true };
+  var LARG = Math.round(RES * 16 / 9), ALT = RES, modoDividido = null;
+  function novaCam() { return { cam: new T.PerspectiveCamera(62, 16 / 9, 0.5, 2200), pos: new T.Vector3(), olhar: new T.Vector3(), primeiro: true }; }
+  function seguir(c, cx, cy, cz, ox, oy, oz, dt, firme) {
+    cy = Math.max(cy, mundo.altura(cx, cz) + 1.5);
+    var lk = firme ? 1 : 1 - Math.exp(-dt * 4), lo = Math.min(1, lk * 1.4);
+    if (c.primeiro) { c.pos.set(cx, cy, cz); c.olhar.set(ox, oy, oz); c.primeiro = false; }
+    else {
+      c.pos.x += (cx - c.pos.x) * lk; c.pos.y += (cy - c.pos.y) * lk; c.pos.z += (cz - c.pos.z) * lk;
+      c.olhar.x += (ox - c.olhar.x) * lo; c.olhar.y += (oy - c.olhar.y) * lo; c.olhar.z += (oz - c.olhar.z) * lo;
+    }
+    c.cam.position.copy(c.pos); c.cam.lookAt(c.olhar);
+  }
+  function camJogador(j, dt, dividido) {
+    var v = j.ve;
+    if (VITRINE) { passeio += dt * 0.25; seguir(j.cam, v.x + Math.cos(passeio + j.slot) * 7, v.y + 2.4, v.z + Math.sin(passeio + j.slot) * 7, v.x, v.y + 0.9, v.z, dt, true); return; }
+    var re = v.v < -2 ? -1 : 1, fx = Math.sin(v.h) * re, fz = Math.cos(v.h) * re;
+    var dist = dividido ? 9.5 : 11, alt = dividido ? 3.4 : 4.6;
+    seguir(j.cam, v.x - fx * dist, v.y + alt, v.z - fz * dist, v.x + fx * 7, v.y + 1.4, v.z + fz * 7, dt);
+  }
+  function ordenados() {
+    var l = [];
+    for (var k in jogadores) l.push(jogadores[k]);
+    l.sort(function (a, b) { return a.slot - b.slot; });
+    return l;
+  }
+  function camerasAtivas() {
+    var l = ordenados(), c = [];
+    for (var i = 0; i < l.length; i++) c.push(l[i].cam.cam);
+    return c.length ? c : [camera];
+  }
+  function desenharTela(dt) {
+    var lista = ordenados(), dividido = lista.length >= 2, i, c;
+    if (dividido !== modoDividido) {
+      modoDividido = dividido;
+      document.body.classList.toggle('dividido', dividido);
+      mundo.densidade(dividido ? 0.5 : 1); // menos capim e moitas quando desenha duas vezes
+    }
+    renderer.setScissorTest(false);
     if (!lista.length) { // ninguém jogando: passeio pela estrada
       passeio += dt * 14;
-      var e = mundo.estrada, f = (passeio / e.total * e.n) % e.n, i = Math.floor(f), i2 = (i + 25) % e.n;
-      cx = e.px[i]; cz = e.pz[i]; cy = e.ph[i] + 9; ox = e.px[i2]; oz = e.pz[i2]; oy = e.ph[i2] + 2;
-    } else {
-      var mx = 0, mz = 0, my = 0, fx = 0, fz = 0;
-      for (i = 0; i < lista.length; i++) {
-        var v = lista[i].ve; mx += v.x; mz += v.z; my += v.y;
-        var peso = 0.3 + Math.min(1, Math.abs(v.v) / 10);
-        fx += Math.sin(v.h) * peso * (v.v < -2 ? -1 : 1); fz += Math.cos(v.h) * peso * (v.v < -2 ? -1 : 1);
-      }
-      mx /= lista.length; mz /= lista.length; my /= lista.length;
-      var fl = Math.sqrt(fx * fx + fz * fz) || 1; fx /= fl; fz /= fl;
-      var abre = 0;
-      for (i = 0; i < lista.length; i++) abre = Math.max(abre, Math.sqrt((lista[i].ve.x - mx) * (lista[i].ve.x - mx) + (lista[i].ve.z - mz) * (lista[i].ve.z - mz)));
-      var dist = 11 + abre * 0.9, alt = 4.6 + abre * 0.45;
-      cx = mx - fx * dist; cz = mz - fz * dist; cy = my + alt;
-      ox = mx + fx * 7; oz = mz + fz * 7; oy = my + 1.4;
-      // muito longe um do outro: quem ficou para trás volta para perto
-      if (abre > 70 && lista.length > 1) {
-        var pior = null, menor = 1e9;
-        for (i = 0; i < lista.length; i++) { var dd = (lista[i].ve.x - mx) * fx + (lista[i].ve.z - mz) * fz; if (dd < menor) { menor = dd; pior = lista[i]; } }
-        var lider = null, maior = -1e9;
-        for (i = 0; i < lista.length; i++) { dd = (lista[i].ve.x - mx) * fx + (lista[i].ve.z - mz) * fz; if (dd > maior) { maior = dd; lider = lista[i]; } }
-        if (pior && lider && pior !== lider) {
-          pior.ve.colocar(lider.ve.x - Math.sin(lider.ve.h) * 7 + Math.cos(lider.ve.h) * 3.5, lider.ve.z - Math.cos(lider.ve.h) * 7 - Math.sin(lider.ve.h) * 3.5, lider.ve.h);
-          aviso(pior.info.nome + ' voltou para perto', CORES_CSS[pior.slot]);
-        }
-      }
+      var e = mundo.estrada, f = (passeio / e.total * e.n) % e.n, a = Math.floor(f), b = (a + 25) % e.n;
+      seguir(camPasseio, e.px[a], e.ph[a] + 9, e.pz[a], e.px[b], e.ph[b] + 2, e.pz[b], dt);
+      camera.fov = 62; camera.aspect = 16 / 9; camera.updateProjectionMatrix();
+      renderer.setViewport(0, 0, LARG, ALT);
+      mundo.escalaParticulas(ALT, 62); mundo.verCamera(camera);
+      renderer.render(cena, camera);
+      return;
     }
-    if (VITRINE && lista.length) { // gira em volta de um carro de cada vez
-      passeio += dt * 0.5; var vc = lista[Math.floor(passeio / 6.283) % lista.length].ve;
-      cx = vc.x + Math.cos(passeio) * 7; cz = vc.z + Math.sin(passeio) * 7; cy = vc.y + 2.4; ox = vc.x; oy = vc.y + 0.9; oz = vc.z; lkV = true;
+    if (!dividido) {
+      c = lista[0].cam.cam; c.fov = 62; c.aspect = 16 / 9; c.updateProjectionMatrix();
+      camJogador(lista[0], dt, false);
+      renderer.setViewport(0, 0, LARG, ALT);
+      mundo.escalaParticulas(ALT, 62); mundo.verCamera(c);
+      renderer.render(cena, c);
+      return;
     }
-    cy = Math.max(cy, mundo.altura(cx, cz) + 1.5);
-    alvoCam.set(cx, cy, cz);
-    var lk = lkV ? 1 : 1 - Math.exp(-dt * 3.5);
-    if (primeiro) { posCam.copy(alvoCam); olhar.set(ox, oy, oz); primeiro = false; }
-    else { posCam.lerp(alvoCam, lk); olhar.x += (ox - olhar.x) * lk * 1.4; olhar.y += (oy - olhar.y) * lk * 1.4; olhar.z += (oz - olhar.z) * lk * 1.4; }
-    camera.position.copy(posCam);
-    camera.lookAt(olhar);
+    renderer.setScissorTest(true);
+    mundo.escalaParticulas(ALT / 2, 38);
+    for (i = 0; i < 2; i++) {
+      c = lista[i].cam.cam; c.fov = 38; c.aspect = LARG / (ALT / 2); c.updateProjectionMatrix();
+      camJogador(lista[i], dt, true);
+      var y = i === 0 ? ALT / 2 : 0; // o primeiro jogador fica em cima
+      renderer.setViewport(0, y, LARG, ALT / 2); renderer.setScissor(0, y, LARG, ALT / 2);
+      mundo.verCamera(c);
+      renderer.render(cena, c);
+    }
+    renderer.setScissorTest(false);
   }
 
   // ---------------- laço principal
-  var vtmp = new T.Vector3(), ultimoHud = 0, fq = 0, fDesde = 0;
+  var ultimoHud = 0, fq = 0, fDesde = 0, ultimoFpsSalvo = 0, fpsAtual = 0;
   function quadro(dt, t) {
     var lista = [], k, j;
     for (k in jogadores) lista.push(jogadores[k].ve);
@@ -292,26 +313,16 @@
       if (bat > 7) { Som.pancada(bat); if (rede) rede.enviar(k, { vib: Math.min(200, Math.round(bat * 8)) }); }
       j.ve.desenhar(dt, t, j.ent.r && j.ve.v > 0.5 || (j.ent.r && !j.ent.a));
       // poeira das rodas de trás
-      var v = j.ve, fx = Math.sin(v.h), fz = Math.cos(v.h), fora = mundo.estradaPerto(v.x, v.z).d > 7.5;
-      var qp = fora ? 1.6 : 0.6;
-      if (Math.random() < qp) {
+      var v = j.ve, fx = Math.sin(v.h), fz = Math.cos(v.h), fora = !v.naEstrada;
+      if (Math.random() < (fora ? 1.6 : 0.6)) {
         mundo.poeiraCarro(v.x - fx * 1.9 + fz * 1.1, v.y, v.z - fz * 1.9 - fx * 1.1, Math.abs(v.v) + v.derrapando * 3);
         mundo.poeiraCarro(v.x - fx * 1.9 - fz * 1.1, v.y, v.z - fz * 1.9 + fx * 1.1, Math.abs(v.v) + v.derrapando * 3);
       }
       Som.atualizar(j);
     }
-    mundo.atualizar(dt, camera);
-    camerar(dt);
-    renderer.render(cena, camera);
+    mundo.atualizar(dt, camerasAtivas());
+    desenharTela(dt);
 
-    // etiquetas sobre os carros
-    var W = window.innerWidth, H = window.innerHeight;
-    for (k in jogadores) {
-      j = jogadores[k];
-      vtmp.set(j.ve.x, j.ve.y + 3.4, j.ve.z).project(camera);
-      if (vtmp.z > 1 || Math.abs(vtmp.x) > 1.1 || Math.abs(vtmp.y) > 1.1) j.etq.style.display = 'none';
-      else { j.etq.style.display = ''; j.etq.style.left = ((vtmp.x * 0.5 + 0.5) * W) + 'px'; j.etq.style.top = ((-vtmp.y * 0.5 + 0.5) * H) + 'px'; }
-    }
     // painel (10x por segundo)
     if (t - ultimoHud > 0.1) {
       ultimoHud = t;
@@ -325,6 +336,11 @@
         j.ui.nitro.parentNode.className = 'barra' + (j.ve.usandoNitro ? ' ativo' : '');
         if (rede && k !== 'teclado' && Math.floor(t * 4) !== j.ultimoEnvio) { j.ultimoEnvio = Math.floor(t * 4); rede.enviar(k, { hud: { v: kmh, c: Math.round(j.ve.cargas * 100) / 100, b: j.ve.usandoNitro ? 1 : 0 } }); }
       }
+    }
+    // fps vão para o Firebase a cada 10 s (para o Claude conferir sem precisar de foto)
+    if (t - ultimoFpsSalvo > 10 && fpsAtual) {
+      ultimoFpsSalvo = t;
+      FB.put('salas/' + cod + '/tv', { fps: fpsAtual, jogadores: lista.length, dividido: !!modoDividido, ua: navigator.userAgent, hora: new Date().toISOString() })['catch'](function () {});
     }
   }
 
@@ -347,13 +363,13 @@
     if (TECLADO) criarJogador('teclado', { nome: 'Teclado', carro: param('carro', 'buggy') });
     atualizarLobby();
     $('btSom').focus();
-    for (var i = 0; i < 100; i++) mundo.atualizar(0.1, null);
+    for (var i = 0; i < 100; i++) mundo.atualizar(0.1, []);
     var ultimo = 0;
     function loop(t) {
       var dt = ultimo ? Math.min((t - ultimo) / 1000, 0.05) : 0.016;
       ultimo = t;
       fq++;
-      if (t - fDesde >= 1000) { $('fps').textContent = Math.round(fq * 1000 / (t - fDesde)) + ' fps'; fq = 0; fDesde = t; }
+      if (t - fDesde >= 1000) { fpsAtual = Math.round(fq * 1000 / (t - fDesde)); $('fps').textContent = fpsAtual + ' fps'; fq = 0; fDesde = t; }
       quadro(dt, t / 1000);
       requestAnimationFrame(loop);
     }
