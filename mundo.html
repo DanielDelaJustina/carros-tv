@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>O mundo</title>
+  <link rel="stylesheet" href="css/teste.css">
+  <style>
+    #gl canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: block; }
+    .carregando { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #1b130d; display: flex; align-items: center;
+      justify-content: center; font-size: 4vh; color: #ffb347; letter-spacing: 2px; }
+    .dicas { position: absolute; left: 50%; bottom: 3vh; transform: translateX(-50%); background: rgba(20, 14, 10, .72);
+      border-radius: 10px; padding: 1vh 2vw; font-size: 2.2vh; color: #e8d8c4; white-space: nowrap; }
+    .dicas b { color: #ffb347; }
+    .vinheta { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
+      background: radial-gradient(ellipse at center, rgba(0,0,0,0) 60%, rgba(40,20,5,.35) 100%); }
+  </style>
+</head>
+<body>
+  <div id="gl"></div>
+  <div class="vinheta"></div>
+  <div id="hud">
+    <div class="topo"><b>PARTE 1 · O MUNDO</b><span id="cam">—</span></div>
+    <div id="fps">-- fps</div>
+    <div class="dicas"><b>◀ ▶</b> câmera &nbsp;·&nbsp; <b>▲ ▼</b> velocidade &nbsp;·&nbsp; <b>OK</b> pausa</div>
+    <div id="erros"></div>
+  </div>
+  <div class="carregando" id="carregando">MONTANDO O DESERTO…</div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="js/firebase.js"></script>
+  <script src="js/mundo.js"></script>
+  <script src="js/mundo-tv.js"></script>
+</body>
+</html>
